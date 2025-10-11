@@ -5,6 +5,7 @@ from PIL import Image, ImageEnhance
 import io
 import zipfile
 from pathlib import Path
+import os
 
 # === Password Configuration ===
 # Get password from Streamlit secrets
