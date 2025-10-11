@@ -48,12 +48,18 @@ Create a folder with these 3 files:
 
 Your app will be live at: `https://YOUR_APP_NAME.streamlit.app`
 
-### Step 4: Change the Password
-**IMPORTANT:** In `app.py`, change this line:
-```python
-CORRECT_PASSWORD = "grassroots2024"
-```
-to your desired password, then commit and push the change.
+### Step 4: Set Up Password (Environment Variable)
+**IMPORTANT:** Set your password as a secret in Streamlit Cloud:
+
+1. Go to your app dashboard on Streamlit Cloud
+2. Click on "⚙️ Settings" → "Secrets"
+3. Add this to your secrets:
+   ```toml
+   password = "your_secure_password_here"
+   ```
+4. Click "Save"
+
+The app will automatically use this password. It's never visible in your source code!
 
 ---
 
@@ -142,4 +148,4 @@ to your desired password, then commit and push the change.
 
 ## Support
 
-For issues or questions, contact the repository maintainer.s
+For issues or questions, contact the repository maintainer.

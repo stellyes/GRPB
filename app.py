@@ -7,8 +7,11 @@ import zipfile
 from pathlib import Path
 
 # === Password Configuration ===
-# Change this to your desired password
-CORRECT_PASSWORD = "///changeme///"
+# Get password from Streamlit secrets
+CORRECT_PASSWORD = st.secrets["password"]
+
+# === Watermark Configuration ===
+WATERMARK_PATH = "badge.png"
 
 # === Image Processing Functions ===
 def remove_background(img_array):
@@ -158,6 +161,16 @@ def apply_watermark(base_image_array, watermark_image):
     return watermarked_image.convert("RGB")
 
 
+def load_watermark():
+    """
+    Load watermark from badge.png in repository root.
+    Returns PIL Image or None if not found.
+    """
+    if Path(WATERMARK_PATH).exists():
+        return Image.open(WATERMARK_PATH)
+    return None
+
+
 # === Streamlit App ===
 def main():
     st.set_page_config(
@@ -201,27 +214,28 @@ def main():
         
         st.write("---")
         st.write("### Instructions")
-        st.write("1. Upload your watermark (badge.png)")
-        st.write("2. Upload photos to process")
+        st.write("1. Upload photos to process")
+        st.write("2. Click 'Process All Images'")
         st.write("3. Download processed images")
+        
+        st.write("---")
+        st.write("### Watermark Status")
+        watermark = load_watermark()
+        if watermark:
+            st.success("✅ Watermark loaded from badge.png")
+            st.image(watermark, caption="Current Watermark", width=150)
+        else:
+            st.warning("⚠️ No badge.png found in repository")
 
-    # Watermark upload
-    st.write("## Step 1: Upload Watermark")
-    watermark_file = st.file_uploader(
-        "Upload your watermark image (PNG with transparency recommended)",
-        type=['png', 'jpg', 'jpeg'],
-        key="watermark"
-    )
-    
-    if watermark_file:
-        st.success("✅ Watermark loaded!")
-        watermark_image = Image.open(watermark_file)
-        st.image(watermark_image, caption="Watermark Preview", width=200)
-    
-    st.write("---")
+    # Check if watermark exists
+    watermark_image = load_watermark()
+    if not watermark_image:
+        st.error("❌ **Error:** badge.png not found in the repository root directory.")
+        st.info("Please add a badge.png file to your repository and redeploy the app.")
+        return
     
     # Photo upload
-    st.write("## Step 2: Upload Photos to Process")
+    st.write("## Upload Photos to Process")
     uploaded_files = st.file_uploader(
         "Upload one or more photos",
         type=['png', 'jpg', 'jpeg'],
@@ -229,12 +243,10 @@ def main():
         key="photos"
     )
     
-    if uploaded_files and watermark_file:
+    if uploaded_files:
         st.write(f"**{len(uploaded_files)} photo(s) uploaded**")
         
         if st.button("🎨 Process All Images", type="primary"):
-            watermark_image = Image.open(watermark_file)
-            
             # Create a progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -279,7 +291,7 @@ def main():
     # Display and download processed images
     if 'processed_images' in st.session_state and st.session_state.processed_images:
         st.write("---")
-        st.write("## Step 3: Download Processed Images")
+        st.write("## Download Processed Images")
         
         # Create zip file for bulk download
         zip_buffer = io.BytesIO()
@@ -314,9 +326,9 @@ def main():
                     key=f"download_{idx}"
                 )
     
-    elif uploaded_files and not watermark_file:
-        st.warning("⚠️ Please upload a watermark image first!")
-    elif not uploaded_files:
+    elif uploaded_files:
+        st.info("👆 Click 'Process All Images' to begin processing!")
+    else:
         st.info("👆 Upload photos above to get started!")
 
 
