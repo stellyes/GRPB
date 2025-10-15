@@ -18,75 +18,102 @@ WATERMARK_PATH = "badge.png"
 def remove_background(img):
     """
     Remove white/grey background, crop to square with margins, and apply adjustments.
+    Preserves semi-transparent elements like honey drips and shadows.
     Returns processed image as numpy array.
     """
-
     # === Convert to RGB for PIL and mask creation ===
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # === Apply bilateral filter (preserve edges) ===
-    gray_filtered = cv2.bilateralFilter(gray, 9, 75, 75)
-
-    # === Create combined threshold masks ===
-    _, mask1 = cv2.threshold(gray_filtered, 200, 255, cv2.THRESH_BINARY_INV)
-    _, mask2 = cv2.threshold(gray_filtered, 170, 255, cv2.THRESH_BINARY_INV)
-    mask = cv2.bitwise_and(mask1, mask2)
-
-    # === Morphological operations ===
+    
+    # === Convert to LAB color space for better color-based segmentation ===
+    img_lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv2.split(img_lab)
+    
+    # === Create mask based on luminance and color variance ===
+    # Calculate local standard deviation to detect texture/detail
+    blur = cv2.GaussianBlur(l_channel, (21, 21), 0)
+    diff = cv2.absdiff(l_channel, blur)
+    
+    # Threshold to find areas with detail (including subtle honey drips)
+    _, detail_mask = cv2.threshold(diff, 8, 255, cv2.THRESH_BINARY)
+    
+    # Create color variance mask (background is uniform, objects have color variation)
+    a_blur = cv2.GaussianBlur(a_channel, (21, 21), 0)
+    b_blur = cv2.GaussianBlur(b_channel, (21, 21), 0)
+    a_diff = cv2.absdiff(a_channel, a_blur)
+    b_diff = cv2.absdiff(b_channel, b_blur)
+    
+    _, a_mask = cv2.threshold(a_diff, 3, 255, cv2.THRESH_BINARY)
+    _, b_mask = cv2.threshold(b_diff, 3, 255, cv2.THRESH_BINARY)
+    color_variance_mask = cv2.bitwise_or(a_mask, b_mask)
+    
+    # === Combine masks ===
+    combined_mask = cv2.bitwise_or(detail_mask, color_variance_mask)
+    
+    # === Add luminance-based mask for darker objects ===
+    _, dark_mask = cv2.threshold(l_channel, 220, 255, cv2.THRESH_BINARY_INV)
+    combined_mask = cv2.bitwise_or(combined_mask, dark_mask)
+    
+    # === Morphological operations to clean up mask ===
     kernel_small = np.ones((3, 3), np.uint8)
     kernel_medium = np.ones((5, 5), np.uint8)
-    kernel_large = np.ones((9, 9), np.uint8)
-
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_small, iterations=3)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_medium, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
-    mask = cv2.erode(mask, kernel_small, iterations=1)
-    mask = cv2.dilate(mask, kernel_small, iterations=1)
-
+    kernel_large = np.ones((7, 7), np.uint8)
+    
+    # Close small gaps
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_small, iterations=2)
+    # Remove small noise
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
+    # Expand the mask slightly to include edges
+    combined_mask = cv2.dilate(combined_mask, kernel_medium, iterations=2)
+    # Smooth the mask
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_large, iterations=1)
+    
     # === Find contours ===
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         raise ValueError("No objects detected in image")
-
-    # === Filter small contours ===
-    min_contour_area = 1500
+    
+    # === Filter small contours but keep reasonable ones ===
+    min_contour_area = 500  # Reduced from 1500 to keep honey drips
     contours = [c for c in contours if cv2.contourArea(c) > min_contour_area]
     if not contours:
         raise ValueError("No significant objects detected in image")
-
-    # === Build clean mask ===
-    clean_mask = np.zeros_like(mask)
+    
+    # === Build final mask with all contours ===
+    final_mask = np.zeros_like(combined_mask)
     for contour in contours:
-        hull = cv2.convexHull(contour)
-        cv2.drawContours(clean_mask, [hull], -1, 255, -1)
-    mask = clean_mask
-
-    # === Get bounding box ===
+        # Use actual contour instead of convex hull to preserve concave shapes
+        cv2.drawContours(final_mask, [contour], -1, 255, -1)
+    
+    # === Expand mask slightly to avoid edge artifacts ===
+    final_mask = cv2.dilate(final_mask, kernel_small, iterations=1)
+    
+    # === Get bounding box of all contours ===
     all_points = np.vstack(contours)
     x, y, w, h = cv2.boundingRect(all_points)
-    padding = 5
+    
+    # Add padding
+    padding = 10  # Increased padding to ensure we capture everything
     x = max(0, x - padding)
     y = max(0, y - padding)
     w = min(img.shape[1] - x, w + 2 * padding)
     h = min(img.shape[0] - y, h + 2 * padding)
-
+    
     # === Calculate square crop with margin ===
     margin_ratio = 0.09
     object_ratio = 1 - 2 * margin_ratio
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
-
+    
     center_x = x + w // 2
     center_y = y + h // 2
     crop_x1 = center_x - square_size // 2
     crop_y1 = center_y - square_size // 2
     crop_x2 = crop_x1 + square_size
     crop_y2 = crop_y1 + square_size
-
+    
     # === Create white canvas ===
     canvas = np.ones((square_size, square_size, 3), dtype=np.uint8) * 255
-
+    
     # === Adjust crop boundaries ===
     paste_x = max(0, -crop_x1)
     paste_y = max(0, -crop_y1)
@@ -94,45 +121,47 @@ def remove_background(img):
     src_y1 = max(0, crop_y1)
     src_x2 = min(crop_x2, img.shape[1])
     src_y2 = min(crop_y2, img.shape[0])
-
+    
     src_w = src_x2 - src_x1
     src_h = src_y2 - src_y1
-
+    
+    # === Extract regions ===
     source_region = img_rgb[src_y1:src_y2, src_x1:src_x2]
-    mask_region = mask[src_y1:src_y2, src_x1:src_x2]
-
-    mask_3channel = cv2.cvtColor(mask_region, cv2.COLOR_GRAY2RGB) / 255.0
+    mask_region = final_mask[src_y1:src_y2, src_x1:src_x2]
+    
+    # === Apply mask with alpha blending for smoother edges ===
+    # Blur the mask slightly for soft edges
+    mask_blurred = cv2.GaussianBlur(mask_region, (5, 5), 0)
+    mask_3channel = cv2.cvtColor(mask_blurred, cv2.COLOR_GRAY2RGB) / 255.0
+    
+    # Blend with white background
     masked_source = (source_region * mask_3channel).astype(np.uint8)
     white_bg = np.ones_like(source_region) * 255
     final_region = (masked_source + white_bg * (1 - mask_3channel)).astype(np.uint8)
-
-    # === Replace remaining gray pixels with white ===
-    final_gray = cv2.cvtColor(final_region, cv2.COLOR_RGB2GRAY)
-    gray_pixels = final_gray > 200
-    final_region[gray_pixels] = [255, 255, 255]
-
+    
+    # === Paste onto canvas ===
     canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = final_region
-
+    
     # === Convert to PIL for adjustments ===
     pil_img = Image.fromarray(canvas)
-
-    # === Increase saturation by 4% before processing ===
+    
+    # === Increase saturation by 4% ===
     saturation_enhancer = ImageEnhance.Color(pil_img)
     pil_img = saturation_enhancer.enhance(1.04)
-
-    # === Increase brightness by 3% before processing ===
+    
+    # === Increase brightness by 2.75% ===
     brightness_enhancer = ImageEnhance.Brightness(pil_img)
     pil_img = brightness_enhancer.enhance(1.0275)
-
-    # Slight contrast enhancement
+    
+    # === Slight contrast enhancement ===
     contrast_enhancer = ImageEnhance.Contrast(pil_img)
     pil_img = contrast_enhancer.enhance(1.03)
-
+    
     # === Levels adjustment ===
     img = np.array(pil_img).astype(np.float32)
     img = np.clip(img * (255.0 / 219.0), 0, 255)
     result = img.astype(np.uint8)
-
+    
     return result
 
 
