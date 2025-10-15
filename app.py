@@ -20,17 +20,6 @@ def remove_background(img_array):
     Remove white/grey background, crop to square with margins, and apply adjustments.
     Returns processed image as numpy array.
     """
-    # === Increase saturation by 4% before processing ===
-    img_pil = Image.fromarray(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
-    saturation_enhancer = ImageEnhance.Color(img_pil)
-    img_pil = saturation_enhancer.enhance(1.04)
-    img_array = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-
-    # === Increase brightness by 3% before processing ===
-    img_pil = Image.fromarray(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
-    brightness_enhancer = ImageEnhance.Brightness(img_pil)
-    img_pil = brightness_enhancer.enhance(1.0275)
-    img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     # === Convert to RGB for PIL and mask creation ===
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -126,6 +115,14 @@ def remove_background(img_array):
 
     # === Convert to PIL for adjustments ===
     pil_img = Image.fromarray(canvas)
+
+    # === Increase saturation by 4% before processing ===
+    saturation_enhancer = ImageEnhance.Color(pil_img)
+    pil_img = saturation_enhancer.enhance(1.04)
+
+    # === Increase brightness by 3% before processing ===
+    brightness_enhancer = ImageEnhance.Brightness(pil_img)
+    pil_img = brightness_enhancer.enhance(1.0275)
 
     # Slight contrast enhancement
     contrast_enhancer = ImageEnhance.Contrast(pil_img)
