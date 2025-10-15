@@ -326,7 +326,9 @@ def main():
         st.write("---")
         st.write("### Instructions")
         st.write("1. Upload photos to process")
-        st.write("2. Click 'Process All Images'")
+        st.write("2. Choose processing mode:")
+        st.write("   - **Remove Background + Watermark**: Full processing with background removal")
+        st.write("   - **Watermark Only**: Just adds watermark to existing photos")
         st.write("3. Download processed images")
         
         st.write("---")
@@ -361,7 +363,15 @@ def main():
     if uploaded_files:
         st.write(f"**{len(uploaded_files)} photo(s) uploaded**")
         
-        if st.button("🎨 Process All Images", type="primary"):
+        # Processing mode selection
+        st.write("### Select Processing Mode")
+        col1, col2 = st.columns(2)
+        with col1:
+            process_full = st.button("🎨 Remove Background + Watermark", type="primary", use_container_width=True)
+        with col2:
+            process_watermark_only = st.button("🏷️ Watermark Only", use_container_width=True)
+        
+        if process_full or process_watermark_only:
             # Create a progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -375,11 +385,14 @@ def main():
                     # Read image using the new loader function
                     img = load_image_file(uploaded_file)
                     
-                    # Process image
-                    processed = remove_background(img)
-                    
-                    # Apply watermark
-                    final_image = apply_watermark(processed, watermark_image)
+                    if process_watermark_only:
+                        # Watermark only mode - convert to RGB array
+                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        final_image = apply_watermark(img_rgb, watermark_image)
+                    else:
+                        # Full processing mode - remove background + watermark
+                        processed = remove_background(img)
+                        final_image = apply_watermark(processed, watermark_image)
                     
                     # Convert to bytes for download
                     img_byte_arr = io.BytesIO()
@@ -441,7 +454,7 @@ def main():
                 )
     
     elif uploaded_files:
-        st.info("👆 Click 'Process All Images' to begin processing!")
+        st.info("👆 Choose a processing mode above to begin!")
     else:
         st.info("👆 Upload photos above to get started!")
 
