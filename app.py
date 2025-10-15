@@ -15,7 +15,7 @@ CORRECT_PASSWORD = st.secrets["password"]
 WATERMARK_PATH = "badge.png"
 
 # === Image Processing Functions ===
-def remove_background(img_array):
+def remove_background(img):
     """
     Remove white/grey background, crop to square with margins, and apply adjustments.
     Returns processed image as numpy array.
@@ -129,9 +129,9 @@ def remove_background(img_array):
     pil_img = contrast_enhancer.enhance(1.03)
 
     # === Levels adjustment ===
-    img_array = np.array(pil_img).astype(np.float32)
-    img_array = np.clip(img_array * (255.0 / 219.0), 0, 255)
-    result = img_array.astype(np.uint8)
+    img = np.array(pil_img).astype(np.float32)
+    img = np.clip(img * (255.0 / 219.0), 0, 255)
+    result = img.astype(np.uint8)
 
     return result
 
