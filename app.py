@@ -164,16 +164,28 @@ def remove_background(img):
     white_bg = np.ones_like(source_region) * 255
     final_region = (masked_source + white_bg * (1 - mask_3channel)).astype(np.uint8)
     
-    # === Final cleanup: Only remove nearly pure white/gray pixels ===
+    # === Final cleanup: Remove residual background noise ===
     final_gray = cv2.cvtColor(final_region, cv2.COLOR_RGB2GRAY)
+    final_hsv = cv2.cvtColor(final_region, cv2.COLOR_RGB2HSV)
+    final_h, final_s, final_v = cv2.split(final_hsv)
     final_lab = cv2.cvtColor(final_region, cv2.COLOR_RGB2LAB)
     final_l, final_a, final_b = cv2.split(final_lab)
     
-    # Only whiten pixels that are very light AND very neutral
+    # Target 1: Very light, very neutral pixels (nearly white/gray)
     nearly_white = (final_gray > 235) & \
                    (np.abs(final_a.astype(np.int16) - 128) < 6) & \
                    (np.abs(final_b.astype(np.int16) - 128) < 6)
-    final_region[nearly_white] = [255, 255, 255]
+    
+    # Target 2: Light gray pixels with low saturation (background noise)
+    light_gray_bg = (final_gray > 200) & \
+                    (final_gray < 245) & \
+                    (final_s < 10) & \
+                    (np.abs(final_a.astype(np.int16) - 128) < 12) & \
+                    (np.abs(final_b.astype(np.int16) - 128) < 12)
+    
+    # Combine and apply
+    to_whiten = nearly_white | light_gray_bg
+    final_region[to_whiten] = [255, 255, 255]
     
     # === Paste onto canvas ===
     canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = final_region
