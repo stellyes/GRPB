@@ -32,29 +32,29 @@ def remove_background(img):
     
     # === Strategy 1: Saturation-based mask (backgrounds are desaturated) ===
     # Product elements usually have more color saturation than gray backgrounds
-    _, sat_mask = cv2.threshold(s, 15, 255, cv2.THRESH_BINARY)
+    _, sat_mask = cv2.threshold(s, 8, 255, cv2.THRESH_BINARY)
     
     # === Strategy 2: Luminance-based mask (darker than background) ===
     # Background is typically light gray/white (high luminance)
-    _, lum_mask = cv2.threshold(v, 200, 255, cv2.THRESH_BINARY_INV)
+    _, lum_mask = cv2.threshold(v, 220, 255, cv2.THRESH_BINARY_INV)
     
     # === Strategy 3: Edge detection to find product boundaries ===
     # Products have strong edges, backgrounds don't
-    edges = cv2.Canny(img, 30, 100)
-    edges_dilated = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
+    edges = cv2.Canny(img, 20, 80)
+    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=3)
     
     # === Strategy 4: Color distance from pure gray ===
     # Gray background has a ≈ 128, b ≈ 128 in LAB space
     a_dist = np.abs(a_channel.astype(np.int16) - 128)
     b_dist = np.abs(b_channel.astype(np.int16) - 128)
     color_dist = a_dist + b_dist
-    _, color_mask = cv2.threshold(color_dist.astype(np.uint8), 8, 255, cv2.THRESH_BINARY)
+    _, color_mask = cv2.threshold(color_dist.astype(np.uint8), 5, 255, cv2.THRESH_BINARY)
     
     # === Strategy 5: Texture detection ===
     # Background is smooth, products have texture/detail
-    blur = cv2.GaussianBlur(l_channel, (15, 15), 0)
+    blur = cv2.GaussianBlur(l_channel, (21, 21), 0)
     texture = cv2.absdiff(l_channel, blur)
-    _, texture_mask = cv2.threshold(texture, 5, 255, cv2.THRESH_BINARY)
+    _, texture_mask = cv2.threshold(texture, 3, 255, cv2.THRESH_BINARY)
     
     # === Combine all masks with OR operation ===
     combined_mask = cv2.bitwise_or(sat_mask, lum_mask)
@@ -109,8 +109,8 @@ def remove_background(img):
     # === Additional pass: Remove remaining gray background pixels ===
     # Create a strict background removal mask based on luminance and saturation
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, strict_mask = cv2.threshold(gray, 185, 255, cv2.THRESH_BINARY_INV)
-    _, sat_strict = cv2.threshold(s, 10, 255, cv2.THRESH_BINARY)
+    _, strict_mask = cv2.threshold(gray, 210, 255, cv2.THRESH_BINARY_INV)
+    _, sat_strict = cv2.threshold(s, 5, 255, cv2.THRESH_BINARY)
     strict_bg_removal = cv2.bitwise_or(strict_mask, sat_strict)
     
     # Combine with our existing mask
@@ -169,7 +169,7 @@ def remove_background(img):
     
     # === Post-process: Replace any remaining light gray pixels with pure white ===
     gray_final = cv2.cvtColor(final_region, cv2.COLOR_RGB2GRAY)
-    light_pixels = gray_final > 230
+    light_pixels = gray_final > 240
     final_region[light_pixels] = [255, 255, 255]
     
     # === Paste onto canvas ===
