@@ -29,7 +29,7 @@ def remove_background(img_array):
     # === Increase brightness by 3% before processing ===
     img_pil = Image.fromarray(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
     brightness_enhancer = ImageEnhance.Brightness(img_pil)
-    img_pil = brightness_enhancer.enhance(1.03)
+    img_pil = brightness_enhancer.enhance(1.0275)
     img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     # === Convert to RGB for PIL and mask creation ===
