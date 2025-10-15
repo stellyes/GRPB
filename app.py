@@ -20,10 +20,10 @@ def remove_background(img_array):
     Remove white/grey background, crop to square with margins, and apply adjustments.
     Returns processed image as numpy array.
     """
-    # === Increase brightness by 9% before processing ===
+    # === Increase brightness by 3% before processing ===
     img_pil = Image.fromarray(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
     brightness_enhancer = ImageEnhance.Brightness(img_pil)
-    img_pil = brightness_enhancer.enhance(1.09)
+    img_pil = brightness_enhancer.enhance(1.03)
     img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     # === Convert to RGB for PIL and mask creation ===
@@ -123,7 +123,7 @@ def remove_background(img_array):
 
     # Slight contrast enhancement
     contrast_enhancer = ImageEnhance.Contrast(pil_img)
-    pil_img = contrast_enhancer.enhance(1.05)
+    pil_img = contrast_enhancer.enhance(1.035)
 
     # === Levels adjustment ===
     img_array = np.array(pil_img).astype(np.float32)
