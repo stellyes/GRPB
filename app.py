@@ -178,25 +178,22 @@ def remove_background(img):
     # === Convert to PIL for adjustments ===
     pil_img = Image.fromarray(canvas)
     
-    # === Increase saturation by 4% ===
+    # === Increase saturation by 2% ===
     saturation_enhancer = ImageEnhance.Color(pil_img)
-    pil_img = saturation_enhancer.enhance(1.04)
+    pil_img = saturation_enhancer.enhance(1.02)
     
-    # === Increase brightness by 2.75% ===
+    # === Increase brightness by 1.5% ===
     brightness_enhancer = ImageEnhance.Brightness(pil_img)
-    pil_img = brightness_enhancer.enhance(1.0275)
+    pil_img = brightness_enhancer.enhance(1.015)
     
     # === Slight contrast enhancement ===
     contrast_enhancer = ImageEnhance.Contrast(pil_img)
-    pil_img = contrast_enhancer.enhance(1.03)
+    pil_img = contrast_enhancer.enhance(1.015)
     
-    # === Levels adjustment ===
-    img = np.array(pil_img).astype(np.float32)
-    img = np.clip(img * (255.0 / 219.0), 0, 255)
-    result = img.astype(np.uint8)
+    # === Convert back to array ===
+    result = np.array(pil_img).astype(np.uint8)
     
     return result
-
 
 def apply_watermark(base_image_array, watermark_image):
     """
