@@ -249,6 +249,39 @@ def load_watermark():
     return None
 
 
+def load_image_file(uploaded_file):
+    """
+    Load image from uploaded file, handling various formats including JFIF and AVIF.
+    Returns image as numpy array in BGR format for OpenCV processing.
+    """
+    try:
+        # For AVIF and other PIL-supported formats, use PIL first then convert to OpenCV
+        file_ext = uploaded_file.name.lower().split('.')[-1]
+        
+        if file_ext in ['avif', 'jfif']:
+            # Use PIL to open these formats
+            pil_image = Image.open(uploaded_file)
+            # Convert to RGB if necessary
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            # Convert PIL to numpy array (RGB)
+            img_array = np.array(pil_image)
+            # Convert RGB to BGR for OpenCV
+            img = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        else:
+            # Standard OpenCV decoding for common formats
+            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+            img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            
+        if img is None:
+            raise ValueError(f"Failed to load image: {uploaded_file.name}")
+            
+        return img
+        
+    except Exception as e:
+        raise ValueError(f"Error loading {uploaded_file.name}: {str(e)}")
+
+
 # === Streamlit App ===
 def main():
     st.set_page_config(
@@ -297,6 +330,10 @@ def main():
         st.write("3. Download processed images")
         
         st.write("---")
+        st.write("### Supported Formats")
+        st.write("JPG, JPEG, PNG, JFIF, AVIF")
+        
+        st.write("---")
         st.write("### Watermark Status")
         watermark = load_watermark()
         if watermark:
@@ -315,8 +352,8 @@ def main():
     # Photo upload
     st.write("## Upload Photos to Process")
     uploaded_files = st.file_uploader(
-        "Upload one or more photos",
-        type=['png', 'jpg', 'jpeg'],
+        "Upload one or more photos (JPG, PNG, JFIF, AVIF)",
+        type=['png', 'jpg', 'jpeg', 'jfif', 'avif'],
         accept_multiple_files=True,
         key="photos"
     )
@@ -335,9 +372,8 @@ def main():
                 try:
                     status_text.text(f"Processing {uploaded_file.name}...")
                     
-                    # Read image
-                    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                    # Read image using the new loader function
+                    img = load_image_file(uploaded_file)
                     
                     # Process image
                     processed = remove_background(img)
