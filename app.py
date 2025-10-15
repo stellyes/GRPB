@@ -155,8 +155,8 @@ def remove_background(img):
     source_region = img_rgb[src_y1:src_y2, src_x1:src_x2]
     mask_region = final_mask[src_y1:src_y2, src_x1:src_x2]
     
-    # === Apply mask with slight blur for smooth edges ===
-    mask_blurred = cv2.GaussianBlur(mask_region, (3, 3), 0)
+    # === Apply mask with blur for smooth edges (2-4 pixel blur) ===
+    mask_blurred = cv2.GaussianBlur(mask_region, (7, 7), 0)
     mask_3channel = cv2.cvtColor(mask_blurred, cv2.COLOR_GRAY2RGB) / 255.0
     
     # Blend with white background
@@ -193,17 +193,17 @@ def remove_background(img):
     # === Convert to PIL for adjustments ===
     pil_img = Image.fromarray(canvas)
     
-    # === Increase saturation by 2% ===
-    saturation_enhancer = ImageEnhance.Color(pil_img)
-    pil_img = saturation_enhancer.enhance(1.02)
-    
-    # === Increase brightness by 1.5% ===
+    # === Increase brightness by 3% ===
     brightness_enhancer = ImageEnhance.Brightness(pil_img)
-    pil_img = brightness_enhancer.enhance(1.015)
+    pil_img = brightness_enhancer.enhance(1.03)
     
-    # === Slight contrast enhancement ===
+    # === Increase saturation by 3% ===
+    saturation_enhancer = ImageEnhance.Color(pil_img)
+    pil_img = saturation_enhancer.enhance(1.03)
+    
+    # === Increase contrast by 2% ===
     contrast_enhancer = ImageEnhance.Contrast(pil_img)
-    pil_img = contrast_enhancer.enhance(1.015)
+    pil_img = contrast_enhancer.enhance(1.02)
     
     # === Convert back to array ===
     result = np.array(pil_img).astype(np.uint8)
