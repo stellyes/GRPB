@@ -30,12 +30,13 @@ def remove_background(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
     # === Strategy 1: Detect neutral gray background specifically ===
-    # Gray backgrounds have low saturation AND are centered around 128 in a/b channels
+    # Gray backgrounds have low saturation AND are centered around 128 in a/b channels AND are light
     a_centered = np.abs(a_channel.astype(np.int16) - 128) < 10
     b_centered = np.abs(b_channel.astype(np.int16) - 128) < 10
     low_saturation = s < 12
-    neutral_gray = a_centered & b_centered & low_saturation
-    not_background_mask = ~neutral_gray.astype(np.uint8) * 255
+    very_light = v > 200
+    neutral_gray = a_centered & b_centered & low_saturation & very_light
+    not_background_mask = (~neutral_gray).astype(np.uint8) * 255
     
     # === Strategy 2: Include anything with decent saturation (colored) ===
     _, sat_mask = cv2.threshold(s, 10, 255, cv2.THRESH_BINARY)
@@ -103,14 +104,14 @@ def remove_background(img):
     
     # === Refine: Remove only truly neutral gray pixels ===
     # This catches background that made it through
-    very_light = gray > 215
+    very_light_bg = gray > 210
     very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 8
     very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 8
     very_low_sat = s < 8
-    strict_bg = very_light & very_neutral_a & very_neutral_b & very_low_sat
+    strict_bg = very_light_bg & very_neutral_a & very_neutral_b & very_low_sat
     
     # Remove strict background from mask
-    final_mask = cv2.bitwise_and(final_mask, ~strict_bg.astype(np.uint8) * 255)
+    final_mask = cv2.bitwise_and(final_mask, (~strict_bg).astype(np.uint8) * 255)
     
     # === Get bounding box ===
     all_points = np.vstack(final_contours)
