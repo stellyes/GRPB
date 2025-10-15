@@ -172,16 +172,16 @@ def remove_background(img):
     final_l, final_a, final_b = cv2.split(final_lab)
     
     # Target 1: Very light, very neutral pixels (nearly white/gray)
-    nearly_white = (final_gray > 235) & \
-                   (np.abs(final_a.astype(np.int16) - 128) < 6) & \
-                   (np.abs(final_b.astype(np.int16) - 128) < 6)
+    nearly_white = (final_gray > 230) & \
+                   (np.abs(final_a.astype(np.int16) - 128) < 8) & \
+                   (np.abs(final_b.astype(np.int16) - 128) < 8)
     
-    # Target 2: Light gray pixels with low saturation (background noise)
-    light_gray_bg = (final_gray > 200) & \
+    # Target 2: Light gray pixels with low saturation (background noise) - MORE AGGRESSIVE
+    light_gray_bg = (final_gray > 190) & \
                     (final_gray < 245) & \
-                    (final_s < 10) & \
-                    (np.abs(final_a.astype(np.int16) - 128) < 12) & \
-                    (np.abs(final_b.astype(np.int16) - 128) < 12)
+                    (final_s < 15) & \
+                    (np.abs(final_a.astype(np.int16) - 128) < 15) & \
+                    (np.abs(final_b.astype(np.int16) - 128) < 15)
     
     # Combine and apply
     to_whiten = nearly_white | light_gray_bg
