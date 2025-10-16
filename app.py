@@ -31,9 +31,9 @@ def remove_background(img):
     
     # === Strategy 1: Detect neutral gray background specifically (BALANCED) ===
     # Gray backgrounds have low saturation AND are centered around 128 in a/b channels AND are light
-    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 17
-    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 17
-    low_saturation = s < 20
+    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 15
+    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 15
+    low_saturation = s < 18
     very_light = v > 185
     neutral_gray = a_centered & b_centered & low_saturation & very_light
     not_background_mask = (~neutral_gray).astype(np.uint8) * 255
