@@ -43,20 +43,20 @@ def remove_background(img):
     # Use preprocessed image for better edge detection
     gray_preprocessed = cv2.cvtColor(img_preprocessed, cv2.COLOR_BGR2GRAY)
     
-    # === Strategy 1: Detect neutral gray background (REFINED) ===
+    # === Strategy 1: Detect neutral gray background (MORE AGGRESSIVE) ===
     # Very strict criteria for what counts as background
-    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 15
-    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 15
-    low_saturation = s < 18
-    very_light = v > 188
+    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 20
+    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 20
+    low_saturation = s < 22
+    very_light = v > 180
     neutral_gray = a_centered & b_centered & low_saturation & very_light
     not_background_mask = (~neutral_gray).astype(np.uint8) * 255
     
     # === Strategy 2: Preserve anything with color ===
-    _, sat_mask = cv2.threshold(s, 8, 255, cv2.THRESH_BINARY)
+    _, sat_mask = cv2.threshold(s, 6, 255, cv2.THRESH_BINARY)
     
     # === Strategy 3: Preserve darker objects ===
-    _, dark_mask = cv2.threshold(v, 203, 255, cv2.THRESH_BINARY_INV)
+    _, dark_mask = cv2.threshold(v, 195, 255, cv2.THRESH_BINARY_INV)
     
     # === Strategy 4: Enhanced edge detection using preprocessed image ===
     edges = cv2.Canny(gray_preprocessed, 30, 100)
@@ -118,12 +118,12 @@ def remove_background(img):
     # === Dilate mask MORE to preserve product edges ===
     final_mask = cv2.dilate(final_mask, kernel_small, iterations=3)
     
-    # === Refine: Remove ONLY obvious background (VERY CONSERVATIVE) ===
+    # === Refine: Remove ONLY obvious background (MORE AGGRESSIVE) ===
     # Only target extremely light, extremely neutral pixels
-    very_light_bg = gray > 200
-    very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 12
-    very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 12
-    very_low_sat = s < 12
+    very_light_bg = gray > 190
+    very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 18
+    very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 18
+    very_low_sat = s < 18
     strict_bg = very_light_bg & very_neutral_a & very_neutral_b & very_low_sat
     
     # Remove strict background from mask
@@ -191,31 +191,34 @@ def remove_background(img):
     white_bg = np.ones_like(source_region) * 255
     final_region = (masked_source + white_bg * (1 - mask_3channel)).astype(np.uint8)
     
-    # === Final cleanup: VERY conservative - only remove obvious background ===
+    # === Final cleanup: Target background more aggressively while protecting product ===
     final_gray = cv2.cvtColor(final_region, cv2.COLOR_RGB2GRAY)
     final_hsv = cv2.cvtColor(final_region, cv2.COLOR_RGB2HSV)
     final_h, final_s, final_v = cv2.split(final_hsv)
     final_lab = cv2.cvtColor(final_region, cv2.COLOR_RGB2LAB)
     final_l, final_a, final_b = cv2.split(final_lab)
     
-    # Create a dilated product mask to protect more area
-    product_mask = mask_region > 100  # Lower threshold to protect more
-    product_core = cv2.erode(product_mask.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1)
+    # Create a dilated product mask to protect product interior strongly
+    product_mask = mask_region > 50  # Very low threshold to protect everything detected
+    # Dilate first to extend protection zone
+    product_protected = cv2.dilate(product_mask.astype(np.uint8), np.ones((7, 7), np.uint8), iterations=2)
+    # Then erode slightly to allow edge cleanup
+    product_core = cv2.erode(product_protected, np.ones((3, 3), np.uint8), iterations=1)
     
-    # Only target VERY light, VERY neutral pixels (almost pure white)
-    nearly_white = (final_gray > 220) & \
-                   (np.abs(final_a.astype(np.int16) - 128) < 10) & \
-                   (np.abs(final_b.astype(np.int16) - 128) < 10) & \
-                   (final_s < 10)
+    # Target 1: Very light, very neutral pixels (nearly white)
+    nearly_white = (final_gray > 215) & \
+                   (np.abs(final_a.astype(np.int16) - 128) < 12) & \
+                   (np.abs(final_b.astype(np.int16) - 128) < 12) & \
+                   (final_s < 12)
     
-    # Light gray only if extremely neutral
-    light_gray_bg = (final_gray > 185) & \
+    # Target 2: Light gray background - MORE AGGRESSIVE
+    light_gray_bg = (final_gray > 170) & \
                     (final_gray < 245) & \
-                    (final_s < 15) & \
-                    (np.abs(final_a.astype(np.int16) - 128) < 12) & \
-                    (np.abs(final_b.astype(np.int16) - 128) < 12)
+                    (final_s < 20) & \
+                    (np.abs(final_a.astype(np.int16) - 128) < 18) & \
+                    (np.abs(final_b.astype(np.int16) - 128) < 18)
     
-    # Only remove if NOT in product core
+    # Only remove if NOT in protected product core
     to_whiten = (nearly_white | light_gray_bg) & (product_core == 0)
     final_region[to_whiten] = [255, 255, 255]
     
