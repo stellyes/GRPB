@@ -133,23 +133,24 @@ def remove_background(img):
     all_points = np.vstack(final_contours)
     x, y, w, h = cv2.boundingRect(all_points)
     
-    # Add padding
-    padding = 10
+    # Add padding (more generous to capture full product)
+    padding = 15
     x = max(0, x - padding)
     y = max(0, y - padding)
     w = min(img.shape[1] - x, w + 2 * padding)
     h = min(img.shape[0] - y, h + 2 * padding)
     
-    # === Calculate square crop with minimal margin (makes product much larger) ===
-    margin_ratio = 0.03  # Reduced from 0.05 to make products even larger like the purple bag
+    # === Calculate square crop with very minimal margin (makes products largest possible) ===
+    margin_ratio = 0.02  # Reduced from 0.03 to make products even larger
     object_ratio = 1 - 2 * margin_ratio
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
     
-    # Use the center of mass of the mask for better centering
+    # Use improved center of mass calculation for better centering
     mask_region_for_center = final_mask[y:y+h, x:x+w]
     M = cv2.moments(mask_region_for_center)
     if M["m00"] != 0:
+        # Center of mass relative to bounding box
         cx = int(M["m10"] / M["m00"])
         cy = int(M["m01"] / M["m00"])
         center_x = x + cx
@@ -158,6 +159,9 @@ def remove_background(img):
         # Fallback to bounding box center
         center_x = x + w // 2
         center_y = y + h // 2
+    
+    # For visual centering, slightly bias upward (products look better slightly high)
+    center_y = int(center_y - square_size * 0.01)  # Move up by 1% of frame
     
     crop_x1 = center_x - square_size // 2
     crop_y1 = center_y - square_size // 2
