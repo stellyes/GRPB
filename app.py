@@ -33,13 +33,13 @@ def remove_background(img):
     # Gray backgrounds have low saturation AND are centered around 128 in a/b channels AND are light
     a_centered = np.abs(a_channel.astype(np.int16) - 128) < 17
     b_centered = np.abs(b_channel.astype(np.int16) - 128) < 17
-    low_saturation = s < 25
-    very_light = v > 190
+    low_saturation = s < 20
+    very_light = v > 185
     neutral_gray = a_centered & b_centered & low_saturation & very_light
     not_background_mask = (~neutral_gray).astype(np.uint8) * 255
     
     # === Strategy 2: Include anything with decent saturation (colored) ===
-    _, sat_mask = cv2.threshold(s, 6, 255, cv2.THRESH_BINARY)
+    _, sat_mask = cv2.threshold(s, 7, 255, cv2.THRESH_BINARY)
     
     # === Strategy 3: Include darker objects (BALANCED) ===
     _, dark_mask = cv2.threshold(v, 200, 255, cv2.THRESH_BINARY_INV)
@@ -175,27 +175,34 @@ def remove_background(img):
     white_bg = np.ones_like(source_region) * 255
     final_region = (masked_source + white_bg * (1 - mask_3channel)).astype(np.uint8)
     
-    # === Final cleanup: Remove residual background noise ===
+    # === Final cleanup: Remove residual background noise ONLY outside product ===
     final_gray = cv2.cvtColor(final_region, cv2.COLOR_RGB2GRAY)
     final_hsv = cv2.cvtColor(final_region, cv2.COLOR_RGB2HSV)
     final_h, final_s, final_v = cv2.split(final_hsv)
     final_lab = cv2.cvtColor(final_region, cv2.COLOR_RGB2LAB)
     final_l, final_a, final_b = cv2.split(final_lab)
     
+    # Create a mask of the product region to protect it
+    product_mask = mask_region > 128  # Areas that were part of the detected product
+    
     # Target 1: Very light, very neutral pixels (nearly white/gray) - BALANCED
     nearly_white = (final_gray > 215) & \
                    (np.abs(final_a.astype(np.int16) - 128) < 13) & \
                    (np.abs(final_b.astype(np.int16) - 128) < 13)
     
-    # Target 2: Light gray pixels with low saturation (background noise) - BALANCED
+    # Target 2: Light gray pixels with low saturation (background noise) - BALANCED  
     light_gray_bg = (final_gray > 175) & \
                     (final_gray < 245) & \
                     (final_s < 22) & \
                     (np.abs(final_a.astype(np.int16) - 128) < 22) & \
                     (np.abs(final_b.astype(np.int16) - 128) < 22)
     
-    # Combine and apply
-    to_whiten = nearly_white | light_gray_bg
+    # Only remove pixels that are NOT in the core product area
+    # Erode the product mask to protect edges and interior
+    product_core = cv2.erode(product_mask.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=2)
+    
+    # Combine targets but exclude the product core
+    to_whiten = (nearly_white | light_gray_bg) & (product_core == 0)
     final_region[to_whiten] = [255, 255, 255]
     
     # === Paste onto canvas ===
