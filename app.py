@@ -146,22 +146,10 @@ def remove_background(img):
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
     
-    # Use improved center of mass calculation for better centering
-    mask_region_for_center = final_mask[y:y+h, x:x+w]
-    M = cv2.moments(mask_region_for_center)
-    if M["m00"] != 0:
-        # Center of mass relative to bounding box
-        cx = int(M["m10"] / M["m00"])
-        cy = int(M["m01"] / M["m00"])
-        center_x = x + cx
-        center_y = y + cy
-    else:
-        # Fallback to bounding box center
-        center_x = x + w // 2
-        center_y = y + h // 2
-    
-    # For visual centering, slightly bias upward (products look better slightly high)
-    center_y = int(center_y - square_size * 0.01)  # Move up by 1% of frame
+    # Use simple bounding box center for consistent centering
+    # This works better than center of mass for irregularly shaped products
+    center_x = x + w // 2
+    center_y = y + h // 2
     
     crop_x1 = center_x - square_size // 2
     crop_y1 = center_y - square_size // 2
