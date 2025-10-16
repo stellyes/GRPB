@@ -29,20 +29,20 @@ def remove_background(img):
     l_channel, a_channel, b_channel = cv2.split(img_lab)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # === Strategy 1: Detect neutral gray background specifically (MORE AGGRESSIVE) ===
+    # === Strategy 1: Detect neutral gray background specifically (EVEN MORE AGGRESSIVE) ===
     # Gray backgrounds have low saturation AND are centered around 128 in a/b channels AND are light
-    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 15
-    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 15
-    low_saturation = s < 18
-    very_light = v > 190
+    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 20
+    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 20
+    low_saturation = s < 25
+    very_light = v > 180
     neutral_gray = a_centered & b_centered & low_saturation & very_light
     not_background_mask = (~neutral_gray).astype(np.uint8) * 255
     
     # === Strategy 2: Include anything with decent saturation (colored) ===
-    _, sat_mask = cv2.threshold(s, 8, 255, cv2.THRESH_BINARY)
+    _, sat_mask = cv2.threshold(s, 6, 255, cv2.THRESH_BINARY)
     
-    # === Strategy 3: Include darker objects (MORE AGGRESSIVE) ===
-    _, dark_mask = cv2.threshold(v, 205, 255, cv2.THRESH_BINARY_INV)
+    # === Strategy 3: Include darker objects (EVEN MORE AGGRESSIVE) ===
+    _, dark_mask = cv2.threshold(v, 195, 255, cv2.THRESH_BINARY_INV)
     
     # === Strategy 4: Edge detection for product boundaries ===
     edges = cv2.Canny(img, 25, 90)
@@ -102,12 +102,12 @@ def remove_background(img):
     # === Dilate mask for smooth edges ===
     final_mask = cv2.dilate(final_mask, kernel_small, iterations=2)
     
-    # === Refine: Remove only truly neutral gray pixels ===
+    # === Refine: Remove neutral gray pixels EVEN MORE AGGRESSIVELY ===
     # This catches background that made it through
-    very_light_bg = gray > 210
-    very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 8
-    very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 8
-    very_low_sat = s < 8
+    very_light_bg = gray > 190
+    very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 18
+    very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 18
+    very_low_sat = s < 18
     strict_bg = very_light_bg & very_neutral_a & very_neutral_b & very_low_sat
     
     # Remove strict background from mask
@@ -124,14 +124,25 @@ def remove_background(img):
     w = min(img.shape[1] - x, w + 2 * padding)
     h = min(img.shape[0] - y, h + 2 * padding)
     
-    # === Calculate square crop with margin ===
-    margin_ratio = 0.09
+    # === Calculate square crop with smaller margin (makes product larger) ===
+    margin_ratio = 0.05  # Reduced from 0.09 to make products larger
     object_ratio = 1 - 2 * margin_ratio
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
     
-    center_x = x + w // 2
-    center_y = y + h // 2
+    # Use the center of mass of the mask for better centering
+    mask_region_for_center = final_mask[y:y+h, x:x+w]
+    M = cv2.moments(mask_region_for_center)
+    if M["m00"] != 0:
+        cx = int(M["m10"] / M["m00"])
+        cy = int(M["m01"] / M["m00"])
+        center_x = x + cx
+        center_y = y + cy
+    else:
+        # Fallback to bounding box center
+        center_x = x + w // 2
+        center_y = y + h // 2
+    
     crop_x1 = center_x - square_size // 2
     crop_y1 = center_y - square_size // 2
     crop_x2 = crop_x1 + square_size
@@ -171,17 +182,17 @@ def remove_background(img):
     final_lab = cv2.cvtColor(final_region, cv2.COLOR_RGB2LAB)
     final_l, final_a, final_b = cv2.split(final_lab)
     
-    # Target 1: Very light, very neutral pixels (nearly white/gray)
-    nearly_white = (final_gray > 230) & \
-                   (np.abs(final_a.astype(np.int16) - 128) < 8) & \
-                   (np.abs(final_b.astype(np.int16) - 128) < 8)
+    # Target 1: Very light, very neutral pixels (nearly white/gray) - EVEN MORE AGGRESSIVE
+    nearly_white = (final_gray > 210) & \
+                   (np.abs(final_a.astype(np.int16) - 128) < 15) & \
+                   (np.abs(final_b.astype(np.int16) - 128) < 15)
     
-    # Target 2: Light gray pixels with low saturation (background noise) - MORE AGGRESSIVE
-    light_gray_bg = (final_gray > 190) & \
+    # Target 2: Light gray pixels with low saturation (background noise) - EVEN MORE AGGRESSIVE
+    light_gray_bg = (final_gray > 170) & \
                     (final_gray < 245) & \
-                    (final_s < 15) & \
-                    (np.abs(final_a.astype(np.int16) - 128) < 15) & \
-                    (np.abs(final_b.astype(np.int16) - 128) < 15)
+                    (final_s < 25) & \
+                    (np.abs(final_a.astype(np.int16) - 128) < 25) & \
+                    (np.abs(final_b.astype(np.int16) - 128) < 25)
     
     # Combine and apply
     to_whiten = nearly_white | light_gray_bg
