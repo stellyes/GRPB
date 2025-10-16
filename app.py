@@ -29,20 +29,20 @@ def remove_background(img):
     l_channel, a_channel, b_channel = cv2.split(img_lab)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # === Strategy 1: Detect neutral gray background specifically ===
+    # === Strategy 1: Detect neutral gray background specifically (MORE AGGRESSIVE) ===
     # Gray backgrounds have low saturation AND are centered around 128 in a/b channels AND are light
-    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 10
-    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 10
-    low_saturation = s < 12
-    very_light = v > 200
+    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 15
+    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 15
+    low_saturation = s < 18
+    very_light = v > 190
     neutral_gray = a_centered & b_centered & low_saturation & very_light
     not_background_mask = (~neutral_gray).astype(np.uint8) * 255
     
     # === Strategy 2: Include anything with decent saturation (colored) ===
-    _, sat_mask = cv2.threshold(s, 10, 255, cv2.THRESH_BINARY)
+    _, sat_mask = cv2.threshold(s, 8, 255, cv2.THRESH_BINARY)
     
-    # === Strategy 3: Include darker objects ===
-    _, dark_mask = cv2.threshold(v, 215, 255, cv2.THRESH_BINARY_INV)
+    # === Strategy 3: Include darker objects (MORE AGGRESSIVE) ===
+    _, dark_mask = cv2.threshold(v, 205, 255, cv2.THRESH_BINARY_INV)
     
     # === Strategy 4: Edge detection for product boundaries ===
     edges = cv2.Canny(img, 25, 90)
