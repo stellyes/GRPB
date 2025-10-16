@@ -21,6 +21,17 @@ def remove_background(img):
     Preserves product details while removing neutral backgrounds.
     Returns processed image as numpy array.
     """
+    # === Pre-processing: Enhance contrast to separate product from background ===
+    img_preprocessed = img.copy()
+    
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to improve contrast
+    lab = cv2.cvtColor(img_preprocessed, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    img_preprocessed = cv2.merge([l, a, b])
+    img_preprocessed = cv2.cvtColor(img_preprocessed, cv2.COLOR_LAB2BGR)
+    
     # === Convert to multiple color spaces ===
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -29,24 +40,27 @@ def remove_background(img):
     l_channel, a_channel, b_channel = cv2.split(img_lab)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-    # === Strategy 1: Detect neutral gray background specifically (BALANCED) ===
-    # Gray backgrounds have low saturation AND are centered around 128 in a/b channels AND are light
-    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 17
-    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 17
-    low_saturation = s < 20
-    very_light = v > 185
+    # Use preprocessed image for better edge detection
+    gray_preprocessed = cv2.cvtColor(img_preprocessed, cv2.COLOR_BGR2GRAY)
+    
+    # === Strategy 1: Detect neutral gray background (REFINED) ===
+    # Very strict criteria for what counts as background
+    a_centered = np.abs(a_channel.astype(np.int16) - 128) < 15
+    b_centered = np.abs(b_channel.astype(np.int16) - 128) < 15
+    low_saturation = s < 18
+    very_light = v > 188
     neutral_gray = a_centered & b_centered & low_saturation & very_light
     not_background_mask = (~neutral_gray).astype(np.uint8) * 255
     
-    # === Strategy 2: Include anything with decent saturation (colored) ===
-    _, sat_mask = cv2.threshold(s, 7, 255, cv2.THRESH_BINARY)
+    # === Strategy 2: Preserve anything with color ===
+    _, sat_mask = cv2.threshold(s, 8, 255, cv2.THRESH_BINARY)
     
-    # === Strategy 3: Include darker objects (BALANCED) ===
-    _, dark_mask = cv2.threshold(v, 200, 255, cv2.THRESH_BINARY_INV)
+    # === Strategy 3: Preserve darker objects ===
+    _, dark_mask = cv2.threshold(v, 203, 255, cv2.THRESH_BINARY_INV)
     
-    # === Strategy 4: Edge detection for product boundaries ===
-    edges = cv2.Canny(img, 25, 90)
-    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=3)
+    # === Strategy 4: Enhanced edge detection using preprocessed image ===
+    edges = cv2.Canny(gray_preprocessed, 30, 100)
+    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=2)
     
     # === Strategy 5: Texture detection ===
     blur = cv2.GaussianBlur(l_channel, (21, 21), 0)
@@ -59,17 +73,19 @@ def remove_background(img):
     combined_mask = cv2.bitwise_or(combined_mask, texture_mask)
     combined_mask = cv2.bitwise_or(combined_mask, edges_dilated)
     
-    # === Morphological operations to clean mask ===
+    # === Morphological operations to clean mask (MORE CONSERVATIVE) ===
     kernel_small = np.ones((3, 3), np.uint8)
     kernel_medium = np.ones((5, 5), np.uint8)
-    kernel_large = np.ones((7, 7), np.uint8)
+    kernel_large = np.ones((9, 9), np.uint8)
     
-    # Close small gaps
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=3)
-    # Remove small noise
+    # Close small gaps in product
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=2)
+    # Remove very small noise only
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
-    # Fill larger holes
+    # Fill larger holes within product
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
+    # Slightly dilate to ensure we capture all product edges
+    combined_mask = cv2.dilate(combined_mask, kernel_small, iterations=1)
     
     # === Find contours ===
     contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -99,15 +115,15 @@ def remove_background(img):
     for contour in final_contours:
         cv2.drawContours(final_mask, [contour], -1, 255, -1)
     
-    # === Dilate mask for smooth edges ===
-    final_mask = cv2.dilate(final_mask, kernel_small, iterations=2)
+    # === Dilate mask MORE to preserve product edges ===
+    final_mask = cv2.dilate(final_mask, kernel_small, iterations=3)
     
-    # === Refine: Remove neutral gray pixels (BALANCED) ===
-    # This catches background that made it through
-    very_light_bg = gray > 195
-    very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 15
-    very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 15
-    very_low_sat = s < 15
+    # === Refine: Remove ONLY obvious background (VERY CONSERVATIVE) ===
+    # Only target extremely light, extremely neutral pixels
+    very_light_bg = gray > 200
+    very_neutral_a = np.abs(a_channel.astype(np.int16) - 128) < 12
+    very_neutral_b = np.abs(b_channel.astype(np.int16) - 128) < 12
+    very_low_sat = s < 12
     strict_bg = very_light_bg & very_neutral_a & very_neutral_b & very_low_sat
     
     # Remove strict background from mask
@@ -166,8 +182,8 @@ def remove_background(img):
     source_region = img_rgb[src_y1:src_y2, src_x1:src_x2]
     mask_region = final_mask[src_y1:src_y2, src_x1:src_x2]
     
-    # === Apply mask with blur for smooth edges (2-4 pixel blur) ===
-    mask_blurred = cv2.GaussianBlur(mask_region, (7, 7), 0)
+    # === Apply mask with MORE blur for smoother edges ===
+    mask_blurred = cv2.GaussianBlur(mask_region, (9, 9), 0)
     mask_3channel = cv2.cvtColor(mask_blurred, cv2.COLOR_GRAY2RGB) / 255.0
     
     # Blend with white background
@@ -175,33 +191,31 @@ def remove_background(img):
     white_bg = np.ones_like(source_region) * 255
     final_region = (masked_source + white_bg * (1 - mask_3channel)).astype(np.uint8)
     
-    # === Final cleanup: Remove residual background noise ONLY outside product ===
+    # === Final cleanup: VERY conservative - only remove obvious background ===
     final_gray = cv2.cvtColor(final_region, cv2.COLOR_RGB2GRAY)
     final_hsv = cv2.cvtColor(final_region, cv2.COLOR_RGB2HSV)
     final_h, final_s, final_v = cv2.split(final_hsv)
     final_lab = cv2.cvtColor(final_region, cv2.COLOR_RGB2LAB)
     final_l, final_a, final_b = cv2.split(final_lab)
     
-    # Create a mask of the product region to protect it
-    product_mask = mask_region > 128  # Areas that were part of the detected product
+    # Create a dilated product mask to protect more area
+    product_mask = mask_region > 100  # Lower threshold to protect more
+    product_core = cv2.erode(product_mask.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1)
     
-    # Target 1: Very light, very neutral pixels (nearly white/gray) - BALANCED
-    nearly_white = (final_gray > 215) & \
-                   (np.abs(final_a.astype(np.int16) - 128) < 13) & \
-                   (np.abs(final_b.astype(np.int16) - 128) < 13)
+    # Only target VERY light, VERY neutral pixels (almost pure white)
+    nearly_white = (final_gray > 220) & \
+                   (np.abs(final_a.astype(np.int16) - 128) < 10) & \
+                   (np.abs(final_b.astype(np.int16) - 128) < 10) & \
+                   (final_s < 10)
     
-    # Target 2: Light gray pixels with low saturation (background noise) - BALANCED  
-    light_gray_bg = (final_gray > 175) & \
+    # Light gray only if extremely neutral
+    light_gray_bg = (final_gray > 185) & \
                     (final_gray < 245) & \
-                    (final_s < 22) & \
-                    (np.abs(final_a.astype(np.int16) - 128) < 22) & \
-                    (np.abs(final_b.astype(np.int16) - 128) < 22)
+                    (final_s < 15) & \
+                    (np.abs(final_a.astype(np.int16) - 128) < 12) & \
+                    (np.abs(final_b.astype(np.int16) - 128) < 12)
     
-    # Only remove pixels that are NOT in the core product area
-    # Erode the product mask to protect edges and interior
-    product_core = cv2.erode(product_mask.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=2)
-    
-    # Combine targets but exclude the product core
+    # Only remove if NOT in product core
     to_whiten = (nearly_white | light_gray_bg) & (product_core == 0)
     final_region[to_whiten] = [255, 255, 255]
     
