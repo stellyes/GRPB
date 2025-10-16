@@ -129,8 +129,15 @@ def remove_background(img):
     # Remove strict background from mask
     final_mask = cv2.bitwise_and(final_mask, (~strict_bg).astype(np.uint8) * 255)
     
-    # === Get bounding box ===
-    all_points = np.vstack(final_contours)
+    # === Get bounding box from CLEANED mask ===
+    # Recalculate contours from cleaned mask for accurate bounding box
+    clean_contours, _ = cv2.findContours(final_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not clean_contours:
+        # Fallback to original contours if cleaning removed everything
+        all_points = np.vstack(final_contours)
+    else:
+        all_points = np.vstack(clean_contours)
+    
     x, y, w, h = cv2.boundingRect(all_points)
     
     # Add padding (more generous to capture full product)
