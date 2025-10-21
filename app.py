@@ -369,6 +369,7 @@ def load_brand_logo_image(filepath):
 def load_image_file(uploaded_file):
     """
     Load image from uploaded file, handling various formats including JFIF and AVIF.
+    Converts transparent backgrounds to white.
     Returns image as numpy array in BGR format for OpenCV processing.
     """
     try:
@@ -378,8 +379,16 @@ def load_image_file(uploaded_file):
         if file_ext in ['avif', 'jfif']:
             # Use PIL to open these formats
             pil_image = Image.open(uploaded_file)
-            # Convert to RGB if necessary
-            if pil_image.mode != 'RGB':
+            # Convert transparent backgrounds to white
+            if pil_image.mode in ('RGBA', 'LA', 'P'):
+                # Create white background
+                white_bg = Image.new('RGB', pil_image.size, (255, 255, 255))
+                # If image has transparency, paste it on white background
+                if pil_image.mode == 'P':
+                    pil_image = pil_image.convert('RGBA')
+                white_bg.paste(pil_image, mask=pil_image.split()[-1] if pil_image.mode in ('RGBA', 'LA') else None)
+                pil_image = white_bg
+            elif pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
             # Convert PIL to numpy array (RGB)
             img_array = np.array(pil_image)
@@ -388,7 +397,23 @@ def load_image_file(uploaded_file):
         else:
             # Standard OpenCV decoding for common formats
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+            
+            # Check if image has alpha channel (transparency)
+            if img is not None and len(img.shape) == 3 and img.shape[2] == 4:
+                # Image has alpha channel - convert to white background
+                # Split into BGR and alpha
+                bgr = img[:, :, :3]
+                alpha = img[:, :, 3:4] / 255.0
+                
+                # Create white background
+                white_bg = np.ones_like(bgr) * 255
+                
+                # Blend: result = foreground * alpha + background * (1 - alpha)
+                img = (bgr * alpha + white_bg * (1 - alpha)).astype(np.uint8)
+            elif img is not None and len(img.shape) == 2:
+                # Grayscale image, convert to BGR
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
             
         if img is None:
             raise ValueError(f"Failed to load image: {uploaded_file.name}")
