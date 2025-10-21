@@ -500,8 +500,13 @@ def main():
                     final_image.save(img_byte_arr, format='JPEG', quality=95)
                     img_byte_arr.seek(0)
                     
+                    # Ensure filename has .jpg extension
+                    original_name = uploaded_file.name
+                    name_without_ext = os.path.splitext(original_name)[0]
+                    jpg_name = f"{name_without_ext}.jpg"
+                    
                     processed_images.append({
-                        'name': uploaded_file.name,
+                        'name': jpg_name,
                         'data': img_byte_arr.getvalue(),
                         'image': final_image
                     })
