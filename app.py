@@ -283,27 +283,42 @@ def apply_brand_watermark(base_image_array, brand_watermark_image):
     """
     Applies a brand watermark to the top LEFT corner of an image.
     Uses same margin and opacity as main watermark.
+    Brand logo is centered in a square frame and vertically aligned with main badge.
     """
     base_image = Image.fromarray(base_image_array).convert("RGBA")
     watermark = brand_watermark_image.convert("RGBA")
 
-    wm_width = base_image.width // 4
-    wm_height = int(watermark.height * (wm_width / watermark.width))
-    watermark = watermark.resize((wm_width, wm_height), Image.LANCZOS)
-
-    alpha = watermark.split()[-1]
+    # Calculate size for square frame (same width as main watermark)
+    square_size = base_image.width // 4
+    
+    # Create a transparent square frame
+    square_frame = Image.new("RGBA", (square_size, square_size), (0, 0, 0, 0))
+    
+    # Resize brand logo to fit within square while maintaining aspect ratio
+    # Leave some padding (90% of square size)
+    max_logo_size = int(square_size * 0.9)
+    watermark.thumbnail((max_logo_size, max_logo_size), Image.LANCZOS)
+    
+    # Center the logo within the square frame
+    logo_x = (square_size - watermark.width) // 2
+    logo_y = (square_size - watermark.height) // 2
+    square_frame.paste(watermark, (logo_x, logo_y), watermark)
+    
+    # Apply opacity to the entire square frame
+    alpha = square_frame.split()[-1]
     alpha = alpha.point(lambda i: i * 0.85)
-    watermark.putalpha(alpha)
+    square_frame.putalpha(alpha)
 
+    # Position in top left corner with same margin as main watermark
     margin_ratio = 0.076
     margin_x = int(base_image.width * margin_ratio)
     margin_y = int(base_image.height * margin_ratio)
-    pos_x = margin_x  # Left side instead of right
+    pos_x = margin_x
     pos_y = margin_y
     position = (pos_x, pos_y)
 
     watermark_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
-    watermark_layer.paste(watermark, position, watermark)
+    watermark_layer.paste(square_frame, position, square_frame)
 
     watermarked_image = Image.alpha_composite(base_image, watermark_layer)
     return watermarked_image.convert("RGB")
