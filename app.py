@@ -549,12 +549,12 @@ def main():
         st.write("### Pre-Processing Adjustment")
         pre_brightness_pct = st.slider(
             "Pre-Processing Brightness Boost",
-            min_value=0,
+            min_value=-25,
             max_value=25,
             value=0,
             step=1,
             format="%d%%",
-            help="Brighten the image BEFORE background removal (useful for dark photos)"
+            help="Adjust brightness BEFORE background removal (useful for dark or overly bright photos)"
         )
         pre_brightness_factor = 1.0 + (pre_brightness_pct / 100.0)
         
