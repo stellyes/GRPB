@@ -629,12 +629,25 @@ def main():
                 )
             
             with col2:
-                # Show preview of selected brand logo
+                # Show preview of selected brand logo with grey background
                 if selected_brand != "None":
                     brand_logo_path = brand_logos[selected_brand]
                     brand_logo_img = load_brand_logo_image(brand_logo_path)
                     if brand_logo_img:
-                        st.image(brand_logo_img, caption=f"{selected_brand} Logo", width=150)
+                        # Create a medium grey background for preview
+                        preview_size = (200, 200)
+                        grey_bg = Image.new('RGB', preview_size, color=(128, 128, 128))
+                        
+                        # Resize logo to fit preview while maintaining aspect ratio
+                        logo_rgba = brand_logo_img.convert('RGBA')
+                        logo_rgba.thumbnail((180, 180), Image.LANCZOS)
+                        
+                        # Center logo on grey background
+                        x = (preview_size[0] - logo_rgba.width) // 2
+                        y = (preview_size[1] - logo_rgba.height) // 2
+                        grey_bg.paste(logo_rgba, (x, y), logo_rgba)
+                        
+                        st.image(grey_bg, caption=f"{selected_brand} Logo", width=150)
             
             # Show "Add Brand Watermark" button if a brand is selected
             if selected_brand != "None":
