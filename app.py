@@ -224,25 +224,29 @@ def remove_background(img):
     # === Paste onto canvas ===
     canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = final_region
     
-    # === Convert to PIL for adjustments ===
-    pil_img = Image.fromarray(canvas)
+    # Convert to array for return (will apply adjustments later with sliders)
+    return canvas
+
+def apply_image_adjustments(img_array, brightness_factor, saturation_factor, contrast_factor):
+    """
+    Apply brightness, saturation, and contrast adjustments to an image array.
+    Factors should be in range 0.75 to 1.25 for -25% to +25% adjustment.
+    """
+    pil_img = Image.fromarray(img_array)
     
-    # === Increase brightness by 3% ===
+    # Apply brightness
     brightness_enhancer = ImageEnhance.Brightness(pil_img)
-    pil_img = brightness_enhancer.enhance(1.03)
+    pil_img = brightness_enhancer.enhance(brightness_factor)
     
-    # === Increase saturation by 3% ===
+    # Apply saturation
     saturation_enhancer = ImageEnhance.Color(pil_img)
-    pil_img = saturation_enhancer.enhance(1.03)
+    pil_img = saturation_enhancer.enhance(saturation_factor)
     
-    # === Increase contrast by 2% ===
+    # Apply contrast
     contrast_enhancer = ImageEnhance.Contrast(pil_img)
-    pil_img = contrast_enhancer.enhance(1.02)
+    pil_img = contrast_enhancer.enhance(contrast_factor)
     
-    # === Convert back to array ===
-    result = np.array(pil_img).astype(np.uint8)
-    
-    return result
+    return np.array(pil_img).astype(np.uint8)
 
 def apply_watermark(base_image_array, watermark_image):
     """
@@ -358,12 +362,52 @@ def main():
             st.rerun()
         
         st.write("---")
+        st.write("### Image Adjustments")
+        
+        # Brightness slider
+        brightness_pct = st.slider(
+            "Brightness",
+            min_value=-25,
+            max_value=25,
+            value=3,
+            step=1,
+            format="%d%%",
+            help="Adjust image brightness from -25% to +25%"
+        )
+        brightness_factor = 1.0 + (brightness_pct / 100.0)
+        
+        # Saturation slider
+        saturation_pct = st.slider(
+            "Saturation",
+            min_value=-25,
+            max_value=25,
+            value=3,
+            step=1,
+            format="%d%%",
+            help="Adjust color saturation from -25% to +25%"
+        )
+        saturation_factor = 1.0 + (saturation_pct / 100.0)
+        
+        # Contrast slider
+        contrast_pct = st.slider(
+            "Contrast",
+            min_value=-25,
+            max_value=25,
+            value=2,
+            step=1,
+            format="%d%%",
+            help="Adjust image contrast from -25% to +25%"
+        )
+        contrast_factor = 1.0 + (contrast_pct / 100.0)
+        
+        st.write("---")
         st.write("### Instructions")
         st.write("1. Upload photos to process")
-        st.write("2. Choose processing mode:")
+        st.write("2. Adjust brightness, saturation, and contrast above")
+        st.write("3. Choose processing mode:")
         st.write("   - **Remove Background + Watermark**: Full processing with background removal")
         st.write("   - **Watermark Only**: Just adds watermark to existing photos")
-        st.write("3. Download processed images")
+        st.write("4. Download processed images")
         
         st.write("---")
         st.write("### Supported Formats")
@@ -422,11 +466,15 @@ def main():
                     if process_watermark_only:
                         # Watermark only mode - convert to RGB array
                         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        final_image = apply_watermark(img_rgb, watermark_image)
+                        # Apply adjustments
+                        img_adjusted = apply_image_adjustments(img_rgb, brightness_factor, saturation_factor, contrast_factor)
+                        final_image = apply_watermark(img_adjusted, watermark_image)
                     else:
-                        # Full processing mode - remove background + watermark
+                        # Full processing mode - remove background + adjustments + watermark
                         processed = remove_background(img)
-                        final_image = apply_watermark(processed, watermark_image)
+                        # Apply adjustments
+                        processed_adjusted = apply_image_adjustments(processed, brightness_factor, saturation_factor, contrast_factor)
+                        final_image = apply_watermark(processed_adjusted, watermark_image)
                     
                     # Convert to bytes for download
                     img_byte_arr = io.BytesIO()
