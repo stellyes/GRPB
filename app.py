@@ -6,6 +6,7 @@ import io
 import zipfile
 from pathlib import Path
 import os
+import json
 
 # === Password Configuration ===
 # Get password from Streamlit secrets
@@ -13,6 +14,7 @@ CORRECT_PASSWORD = st.secrets["password"]
 
 # === Watermark Configuration ===
 WATERMARK_PATH = "badge.png"
+BRAND_LOGOS_JSON = "brand-logos/brands.json"
 
 # === Image Processing Functions ===
 def remove_background(img):
@@ -277,6 +279,36 @@ def apply_watermark(base_image_array, watermark_image):
     return watermarked_image.convert("RGB")
 
 
+def apply_brand_watermark(base_image_array, brand_watermark_image):
+    """
+    Applies a brand watermark to the top LEFT corner of an image.
+    Uses same margin and opacity as main watermark.
+    """
+    base_image = Image.fromarray(base_image_array).convert("RGBA")
+    watermark = brand_watermark_image.convert("RGBA")
+
+    wm_width = base_image.width // 4
+    wm_height = int(watermark.height * (wm_width / watermark.width))
+    watermark = watermark.resize((wm_width, wm_height), Image.LANCZOS)
+
+    alpha = watermark.split()[-1]
+    alpha = alpha.point(lambda i: i * 0.85)
+    watermark.putalpha(alpha)
+
+    margin_ratio = 0.076
+    margin_x = int(base_image.width * margin_ratio)
+    margin_y = int(base_image.height * margin_ratio)
+    pos_x = margin_x  # Left side instead of right
+    pos_y = margin_y
+    position = (pos_x, pos_y)
+
+    watermark_layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+    watermark_layer.paste(watermark, position, watermark)
+
+    watermarked_image = Image.alpha_composite(base_image, watermark_layer)
+    return watermarked_image.convert("RGB")
+
+
 def load_watermark():
     """
     Load watermark from badge.png in repository root.
@@ -284,6 +316,38 @@ def load_watermark():
     """
     if Path(WATERMARK_PATH).exists():
         return Image.open(WATERMARK_PATH)
+    return None
+
+
+def load_brand_logos():
+    """
+    Load brand logos information from JSON file.
+    Returns dict with brand names as keys and filepaths as values, or None if not found.
+    """
+    if Path(BRAND_LOGOS_JSON).exists():
+        try:
+            with open(BRAND_LOGOS_JSON, 'r') as f:
+                data = json.load(f)
+                # Create a dictionary mapping brand names to filepaths
+                brands = {item['name']: item['filepath'] for item in data['data']}
+                return brands
+        except Exception as e:
+            st.error(f"Error loading brand logos JSON: {str(e)}")
+            return None
+    return None
+
+
+def load_brand_logo_image(filepath):
+    """
+    Load a specific brand logo image from filepath.
+    Returns PIL Image or None if not found.
+    """
+    if Path(filepath).exists():
+        try:
+            return Image.open(filepath)
+        except Exception as e:
+            st.error(f"Error loading brand logo from {filepath}: {str(e)}")
+            return None
     return None
 
 
@@ -544,6 +608,88 @@ def main():
                 type="primary"
             )
         
+        # Brand watermark section
+        st.write("---")
+        st.write("## Add Brand Watermark (Optional)")
+        st.write("Add a brand logo to the top left corner of your processed images.")
+        
+        # Load brand logos
+        brand_logos = load_brand_logos()
+        
+        if brand_logos:
+            col1, col2 = st.columns([2, 2])
+            
+            with col1:
+                # Dropdown for brand selection
+                brand_names = ["None"] + sorted(brand_logos.keys())
+                selected_brand = st.selectbox(
+                    "Select Brand Logo",
+                    options=brand_names,
+                    key="brand_selector"
+                )
+            
+            with col2:
+                # Show preview of selected brand logo
+                if selected_brand != "None":
+                    brand_logo_path = brand_logos[selected_brand]
+                    brand_logo_img = load_brand_logo_image(brand_logo_path)
+                    if brand_logo_img:
+                        st.image(brand_logo_img, caption=f"{selected_brand} Logo", width=150)
+            
+            # Show "Add Brand Watermark" button if a brand is selected
+            if selected_brand != "None":
+                if st.button("🏷️ Add Brand Watermark", type="primary", use_container_width=True):
+                    brand_logo_path = brand_logos[selected_brand]
+                    brand_logo_img = load_brand_logo_image(brand_logo_path)
+                    
+                    if brand_logo_img:
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        branded_images = []
+                        
+                        for idx, img_data in enumerate(st.session_state.processed_images):
+                            try:
+                                status_text.text(f"Adding brand watermark to {img_data['name']}...")
+                                
+                                # Convert existing image to array
+                                img_array = np.array(img_data['image'])
+                                
+                                # Apply brand watermark
+                                final_image = apply_brand_watermark(img_array, brand_logo_img)
+                                
+                                # Convert to bytes for download
+                                img_byte_arr = io.BytesIO()
+                                final_image.save(img_byte_arr, format='JPEG', quality=95)
+                                img_byte_arr.seek(0)
+                                
+                                # Update name to indicate brand
+                                original_name = img_data['name']
+                                name_without_ext = os.path.splitext(original_name)[0]
+                                branded_name = f"{name_without_ext}_branded.jpg"
+                                
+                                branded_images.append({
+                                    'name': branded_name,
+                                    'data': img_byte_arr.getvalue(),
+                                    'image': final_image
+                                })
+                                
+                                progress_bar.progress((idx + 1) / len(st.session_state.processed_images))
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error adding brand watermark to {img_data['name']}: {str(e)}")
+                        
+                        status_text.text("✅ Brand watermarking complete!")
+                        
+                        # Store branded images in session state
+                        st.session_state.branded_images = branded_images
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Could not load brand logo: {brand_logo_path}")
+        else:
+            st.warning("⚠️ Brand logos JSON file not found. Please add brand-logos/brands.json to your repository.")
+        
+        st.write("---")
         st.write("### Preview and Individual Downloads")
         
         # Display processed images in a grid
@@ -557,6 +703,44 @@ def main():
                     file_name=f"processed_{img_data['name']}",
                     mime="image/jpeg",
                     key=f"download_{idx}"
+                )
+    
+    # Display branded images if they exist
+    if 'branded_images' in st.session_state and st.session_state.branded_images:
+        st.write("---")
+        st.write("## Download Branded Images")
+        
+        # Create zip file for branded images
+        zip_buffer_branded = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer_branded, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for img_data in st.session_state.branded_images:
+                zip_file.writestr(f"branded_{img_data['name']}", img_data['data'])
+        
+        zip_buffer_branded.seek(0)
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.download_button(
+                label="📦 Download All Branded as ZIP",
+                data=zip_buffer_branded.getvalue(),
+                file_name="branded_photos.zip",
+                mime="application/zip",
+                type="primary"
+            )
+        
+        st.write("### Branded Images Preview")
+        
+        # Display branded images in a grid
+        cols = st.columns(3)
+        for idx, img_data in enumerate(st.session_state.branded_images):
+            with cols[idx % 3]:
+                st.image(img_data['image'], caption=img_data['name'], use_container_width=True)
+                st.download_button(
+                    label=f"⬇️ Download",
+                    data=img_data['data'],
+                    file_name=f"branded_{img_data['name']}",
+                    mime="image/jpeg",
+                    key=f"download_branded_{idx}"
                 )
     
     elif uploaded_files:
