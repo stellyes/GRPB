@@ -441,6 +441,19 @@ def main():
     if uploaded_files:
         st.write(f"**{len(uploaded_files)} photo(s) uploaded**")
         
+        # Pre-processing brightness adjustment
+        st.write("### Pre-Processing Adjustment")
+        pre_brightness_pct = st.slider(
+            "Pre-Processing Brightness Boost",
+            min_value=0,
+            max_value=25,
+            value=0,
+            step=1,
+            format="%d%%",
+            help="Brighten the image BEFORE background removal (useful for dark photos)"
+        )
+        pre_brightness_factor = 1.0 + (pre_brightness_pct / 100.0)
+        
         # Processing mode selection
         st.write("### Select Processing Mode")
         col1, col2 = st.columns(2)
@@ -462,6 +475,12 @@ def main():
                     
                     # Read image using the new loader function
                     img = load_image_file(uploaded_file)
+                    
+                    # Apply pre-processing brightness if needed
+                    if pre_brightness_pct > 0:
+                        img_rgb_pre = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        img_brightened = apply_image_adjustments(img_rgb_pre, pre_brightness_factor, 1.0, 1.0)
+                        img = cv2.cvtColor(img_brightened, cv2.COLOR_RGB2BGR)
                     
                     if process_watermark_only:
                         # Watermark only mode - convert to RGB array
