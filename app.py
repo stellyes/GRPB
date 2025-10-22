@@ -294,17 +294,27 @@ def detect_and_crop_to_square(img):
     all_points = np.vstack(all_contours)
     x, y, w, h = cv2.boundingRect(all_points)
     
-    # Add padding around detected bounds
-    padding = 50
+    # Add initial padding
+    padding = 15
     x = max(0, x - padding)
     y = max(0, y - padding)
     w = min(img.shape[1] - x, w + 2 * padding)
     h = min(img.shape[0] - y, h + 2 * padding)
     
-    # Calculate square crop with MUCH MORE margin to make product smaller
-    # The full background removal produces products that take up less of the frame
-    # So we need a larger margin ratio here
-    margin_ratio = 0.15  # Increased from 0.02 to create much more white space
+    # CRITICAL: Expand the bounding box dimensions to make the product appear smaller
+    # This simulates the effect of the full background removal which captures more area
+    expansion_factor = 1.5  # Make the detected area 50% larger in each dimension
+    w_expanded = int(w * expansion_factor)
+    h_expanded = int(h * expansion_factor)
+    
+    # Recalculate x, y to keep centered
+    x = max(0, x - (w_expanded - w) // 2)
+    y = max(0, y - (h_expanded - h) // 2)
+    w = min(img.shape[1] - x, w_expanded)
+    h = min(img.shape[0] - y, h_expanded)
+    
+    # Calculate square crop with minimal margin (same as full processing)
+    margin_ratio = 0.02
     object_ratio = 1 - 2 * margin_ratio
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
@@ -336,7 +346,6 @@ def detect_and_crop_to_square(img):
     canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = img_rgb[src_y1:src_y2, src_x1:src_x2]
     
     return canvas
-
 
 def apply_watermark(base_image_array, watermark_image):
     """
