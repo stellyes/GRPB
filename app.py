@@ -294,15 +294,17 @@ def detect_and_crop_to_square(img):
     all_points = np.vstack(all_contours)
     x, y, w, h = cv2.boundingRect(all_points)
     
-    # Add padding
-    padding = 15
+    # Add MORE padding to match the full background removal sizing
+    # The full removal adds 15px padding, but we need more generous padding 
+    # to account for the fact that we're detecting tighter bounds
+    padding = 40  # Increased from 15 to create more margin
     x = max(0, x - padding)
     y = max(0, y - padding)
     w = min(img.shape[1] - x, w + 2 * padding)
     h = min(img.shape[0] - y, h + 2 * padding)
     
-    # Calculate square crop with minimal margin (same as full processing)
-    margin_ratio = 0.02
+    # Calculate square crop with the SAME margin ratio as full processing
+    margin_ratio = 0.02  # This matches the full background removal
     object_ratio = 1 - 2 * margin_ratio
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
@@ -334,6 +336,7 @@ def detect_and_crop_to_square(img):
     canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = img_rgb[src_y1:src_y2, src_x1:src_x2]
     
     return canvas
+
 
 def apply_watermark(base_image_array, watermark_image):
     """
