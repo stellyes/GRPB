@@ -295,9 +295,7 @@ def detect_and_crop_to_square(img):
     x, y, w, h = cv2.boundingRect(all_points)
     
     # Add MORE padding to match the full background removal sizing
-    # The full removal adds 15px padding, but we need more generous padding 
-    # to account for the fact that we're detecting tighter bounds
-    padding = 40  # Increased from 15 to create more margin
+    padding = 15
     x = max(0, x - padding)
     y = max(0, y - padding)
     w = min(img.shape[1] - x, w + 2 * padding)
