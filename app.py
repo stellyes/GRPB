@@ -250,6 +250,91 @@ def apply_image_adjustments(img_array, brightness_factor, saturation_factor, con
     
     return np.array(pil_img).astype(np.uint8)
 
+
+def detect_and_crop_to_square(img):
+    """
+    Detect the main subject in an image with white background and crop to square.
+    This is a lightweight version for watermark-only mode that assumes a clean white background.
+    Returns processed image as numpy array in RGB format.
+    """
+    # Convert to RGB and various color spaces for detection
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(img_hsv)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Detect non-white pixels (the product)
+    # White background typically has high V value, low saturation, and high gray value
+    not_white = (v < 245) | (s > 10) | (gray < 240)
+    product_mask = not_white.astype(np.uint8) * 255
+    
+    # Clean up the mask
+    kernel_small = np.ones((3, 3), np.uint8)
+    kernel_medium = np.ones((5, 5), np.uint8)
+    product_mask = cv2.morphologyEx(product_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=2)
+    product_mask = cv2.morphologyEx(product_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
+    product_mask = cv2.dilate(product_mask, kernel_small, iterations=2)
+    
+    # Find contours
+    contours, _ = cv2.findContours(product_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        # If no product detected, return original image centered in square
+        max_dim = max(img.shape[0], img.shape[1])
+        canvas = np.ones((max_dim, max_dim, 3), dtype=np.uint8) * 255
+        y_offset = (max_dim - img.shape[0]) // 2
+        x_offset = (max_dim - img.shape[1]) // 2
+        canvas[y_offset:y_offset + img.shape[0], x_offset:x_offset + img.shape[1]] = img_rgb
+        return canvas
+    
+    # Get bounding box of all contours
+    all_contours = [c for c in contours if cv2.contourArea(c) > 500]
+    if not all_contours:
+        all_contours = contours
+    
+    all_points = np.vstack(all_contours)
+    x, y, w, h = cv2.boundingRect(all_points)
+    
+    # Add padding
+    padding = 15
+    x = max(0, x - padding)
+    y = max(0, y - padding)
+    w = min(img.shape[1] - x, w + 2 * padding)
+    h = min(img.shape[0] - y, h + 2 * padding)
+    
+    # Calculate square crop with minimal margin (same as full processing)
+    margin_ratio = 0.02
+    object_ratio = 1 - 2 * margin_ratio
+    max_dim = max(w, h)
+    square_size = int(max_dim / object_ratio)
+    
+    # Center the crop on the bounding box
+    center_x = x + w // 2
+    center_y = y + h // 2
+    
+    crop_x1 = center_x - square_size // 2
+    crop_y1 = center_y - square_size // 2
+    crop_x2 = crop_x1 + square_size
+    crop_y2 = crop_y1 + square_size
+    
+    # Create white canvas
+    canvas = np.ones((square_size, square_size, 3), dtype=np.uint8) * 255
+    
+    # Calculate paste coordinates
+    paste_x = max(0, -crop_x1)
+    paste_y = max(0, -crop_y1)
+    src_x1 = max(0, crop_x1)
+    src_y1 = max(0, crop_y1)
+    src_x2 = min(crop_x2, img.shape[1])
+    src_y2 = min(crop_y2, img.shape[0])
+    
+    src_w = src_x2 - src_x1
+    src_h = src_y2 - src_y1
+    
+    # Paste the cropped region onto canvas
+    canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = img_rgb[src_y1:src_y2, src_x1:src_x2]
+    
+    return canvas
+
 def apply_watermark(base_image_array, watermark_image):
     """
     Applies a watermark to an image and returns the result.
