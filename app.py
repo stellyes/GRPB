@@ -395,7 +395,7 @@ def load_image_file(uploaded_file):
             
             # HEIC Pre-processing: Resize large images for faster processing
             if file_ext in ['heic', 'heif']:
-                max_dimension = 3000  # Maximum width or height
+                max_dimension = 900  # Maximum width or height
                 width, height = pil_image.size
                 
                 # Only resize if image is larger than max_dimension
