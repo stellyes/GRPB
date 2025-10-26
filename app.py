@@ -395,7 +395,7 @@ def load_image_file(uploaded_file):
             
             # HEIC Pre-processing: Resize large images for faster processing
             if file_ext in ['heic', 'heif']:
-                max_dimension = 900  # Maximum width or height
+                max_dimension = 3000  # Maximum width or height
                 width, height = pil_image.size
                 
                 # Only resize if image is larger than max_dimension
@@ -623,13 +623,25 @@ def main():
         pre_brightness_pct = st.slider(
             "Pre-Processing Brightness Boost",
             min_value=-25,
-            max_value=25,
+            max_value=50,
             value=0,
             step=1,
             format="%d%%",
             help="Adjust brightness BEFORE background removal (useful for dark or overly bright photos)"
         )
         pre_brightness_factor = 1.0 + (pre_brightness_pct / 100.0)
+        
+        # Pre-processing contrast adjustment
+        pre_contrast_pct = st.slider(
+            "Pre-Processing Contrast",
+            min_value=-25,
+            max_value=25,
+            value=0,
+            step=1,
+            format="%d%%",
+            help="Adjust contrast BEFORE background removal"
+        )
+        pre_contrast_factor = 1.0 + (pre_contrast_pct / 100.0)
         
         # Processing mode selection
         st.write("### Select Processing Mode")
@@ -655,11 +667,11 @@ def main():
                     # Read image using the new loader function
                     img = load_image_file(uploaded_file)
                     
-                    # Apply pre-processing brightness if needed
-                    if pre_brightness_pct != 0:
+                    # Apply pre-processing brightness and contrast if needed
+                    if pre_brightness_pct != 0 or pre_contrast_pct != 0:
                         img_rgb_pre = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        img_brightened = apply_image_adjustments(img_rgb_pre, pre_brightness_factor, 1.0, 1.0)
-                        img = cv2.cvtColor(img_brightened, cv2.COLOR_RGB2BGR)
+                        img_adjusted_pre = apply_image_adjustments(img_rgb_pre, pre_brightness_factor, 1.0, pre_contrast_factor)
+                        img = cv2.cvtColor(img_adjusted_pre, cv2.COLOR_RGB2BGR)
                     
                     if process_watermark_only:
                         # Watermark only mode - convert to RGB array
