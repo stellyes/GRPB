@@ -374,6 +374,7 @@ def load_image_file(uploaded_file):
     """
     Load image from uploaded file, handling various formats including JFIF, AVIF, and HEIC.
     Converts transparent backgrounds to white.
+    HEIC images are automatically resized to max 3000px to improve processing speed.
     Returns image as numpy array in BGR format for OpenCV processing.
     """
     try:
@@ -383,6 +384,25 @@ def load_image_file(uploaded_file):
         if file_ext in ['heic', 'heif', 'avif', 'jfif']:
             # Use PIL to open these formats
             pil_image = Image.open(uploaded_file)
+            
+            # HEIC Pre-processing: Resize large images for faster processing
+            if file_ext in ['heic', 'heif']:
+                max_dimension = 1000  # Maximum width or height
+                width, height = pil_image.size
+                
+                # Only resize if image is larger than max_dimension
+                if width > max_dimension or height > max_dimension:
+                    # Calculate new size maintaining aspect ratio
+                    if width > height:
+                        new_width = max_dimension
+                        new_height = int((max_dimension / width) * height)
+                    else:
+                        new_height = max_dimension
+                        new_width = int((max_dimension / height) * width)
+                    
+                    # Resize with high-quality LANCZOS resampling
+                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+            
             # Convert transparent backgrounds to white
             if pil_image.mode in ('RGBA', 'LA', 'P'):
                 # Create white background
@@ -520,6 +540,7 @@ def main():
         st.write("---")
         st.write("### Supported Formats")
         st.write("JPG, JPEG, PNG, JFIF, AVIF, HEIC")
+        st.caption("📱 HEIC images are automatically resized to 3000px max for faster processing")
         
         st.write("---")
         st.write("### Watermark Status")
