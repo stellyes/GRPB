@@ -387,7 +387,7 @@ def load_image_file(uploaded_file):
             
             # HEIC Pre-processing: Resize large images for faster processing
             if file_ext in ['heic', 'heif']:
-                max_dimension = 1000  # Maximum width or height
+                max_dimension = 3000  # Maximum width or height
                 width, height = pil_image.size
                 
                 # Only resize if image is larger than max_dimension
@@ -535,6 +535,7 @@ def main():
         st.write("3. Choose processing mode:")
         st.write("   - **Remove Background + Watermark**: Full processing with background removal")
         st.write("   - **Watermark Only**: Just adds watermark to existing photos")
+        st.write("   - **Remove Background Only**: Removes background without watermark")
         st.write("4. Download processed images")
         
         st.write("---")
@@ -585,13 +586,15 @@ def main():
         
         # Processing mode selection
         st.write("### Select Processing Mode")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             process_full = st.button("🎨 Remove Background + Watermark", type="primary", use_container_width=True)
         with col2:
             process_watermark_only = st.button("🏷️ Watermark Only", use_container_width=True)
+        with col3:
+            process_background_only = st.button("✂️ Remove Background Only", use_container_width=True)
         
-        if process_full or process_watermark_only:
+        if process_full or process_watermark_only or process_background_only:
             # Create a progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -617,6 +620,12 @@ def main():
                         # Apply adjustments
                         img_adjusted = apply_image_adjustments(img_rgb, brightness_factor, saturation_factor, contrast_factor)
                         final_image = apply_watermark(img_adjusted, watermark_image)
+                    elif process_background_only:
+                        # Background removal only - no watermark
+                        processed = remove_background(img)
+                        # Apply adjustments
+                        final_image_array = apply_image_adjustments(processed, brightness_factor, saturation_factor, contrast_factor)
+                        final_image = Image.fromarray(final_image_array)
                     else:
                         # Full processing mode - remove background + adjustments + watermark
                         processed = remove_background(img)
