@@ -376,13 +376,14 @@ def load_image_file(uploaded_file):
     Converts transparent backgrounds to white.
     Automatically corrects image orientation based on EXIF data.
     HEIC images are automatically resized to max 3000px to improve processing speed.
+    JPG/JPEG images are automatically resized to max 900px to improve processing speed.
     Returns image as numpy array in BGR format for OpenCV processing.
     """
     try:
         # For HEIC, AVIF, JFIF and other PIL-supported formats, use PIL first then convert to OpenCV
         file_ext = uploaded_file.name.lower().split('.')[-1]
         
-        if file_ext in ['heic', 'heif', 'avif', 'jfif']:
+        if file_ext in ['heic', 'heif', 'avif', 'jfif', 'jpg', 'jpeg']:
             # Use PIL to open these formats
             pil_image = Image.open(uploaded_file)
             
@@ -395,7 +396,25 @@ def load_image_file(uploaded_file):
             
             # HEIC Pre-processing: Resize large images for faster processing
             if file_ext in ['heic', 'heif']:
-                max_dimension = 3000  # Maximum width or height
+                max_dimension = 900  # Maximum width or height
+                width, height = pil_image.size
+                
+                # Only resize if image is larger than max_dimension
+                if width > max_dimension or height > max_dimension:
+                    # Calculate new size maintaining aspect ratio
+                    if width > height:
+                        new_width = max_dimension
+                        new_height = int((max_dimension / width) * height)
+                    else:
+                        new_height = max_dimension
+                        new_width = int((max_dimension / height) * width)
+                    
+                    # Resize with high-quality LANCZOS resampling
+                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+            
+            # JPG/JPEG Pre-processing: Resize for faster processing
+            if file_ext in ['jpg', 'jpeg']:
+                max_dimension = 900  # Maximum width or height
                 width, height = pil_image.size
                 
                 # Only resize if image is larger than max_dimension
@@ -589,6 +608,7 @@ def main():
         st.write("### Supported Formats")
         st.write("JPG, JPEG, PNG, JFIF, AVIF, HEIC")
         st.caption("📱 HEIC images are automatically resized to 3000px max for faster processing")
+        st.caption("📷 JPG/JPEG images are automatically resized to 900px max for faster processing")
         
         st.write("---")
         st.write("### Watermark Status")
