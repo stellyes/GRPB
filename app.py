@@ -374,6 +374,7 @@ def load_image_file(uploaded_file):
     """
     Load image from uploaded file, handling various formats including JFIF, AVIF, and HEIC.
     Converts transparent backgrounds to white.
+    Automatically corrects image orientation based on EXIF data.
     HEIC images are automatically resized to max 3000px to improve processing speed.
     Returns image as numpy array in BGR format for OpenCV processing.
     """
@@ -384,6 +385,13 @@ def load_image_file(uploaded_file):
         if file_ext in ['heic', 'heif', 'avif', 'jfif']:
             # Use PIL to open these formats
             pil_image = Image.open(uploaded_file)
+            
+            # Correct orientation based on EXIF data
+            try:
+                from PIL import ImageOps
+                pil_image = ImageOps.exif_transpose(pil_image)
+            except Exception:
+                pass  # If EXIF orientation fails, continue with original
             
             # HEIC Pre-processing: Resize large images for faster processing
             if file_ext in ['heic', 'heif']:
@@ -422,6 +430,45 @@ def load_image_file(uploaded_file):
             # Standard OpenCV decoding for common formats
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+            
+            # Correct orientation for standard formats
+            try:
+                from PIL import ImageOps
+                uploaded_file.seek(0)  # Reset file pointer
+                pil_temp = Image.open(uploaded_file)
+                pil_temp = ImageOps.exif_transpose(pil_temp)
+                img_array = np.array(pil_temp)
+                
+                # Convert based on mode
+                if pil_temp.mode == 'RGB':
+                    img = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                elif pil_temp.mode == 'RGBA':
+                    # Handle transparency
+                    bgr = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2BGR)
+                    alpha = img_array[:, :, 3:4] / 255.0
+                    white_bg = np.ones_like(bgr) * 255
+                    img = (bgr * alpha + white_bg * (1 - alpha)).astype(np.uint8)
+                else:
+                    img = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+            except Exception:
+                # Fallback if EXIF processing fails
+                pass
+            
+            # Check if image has alpha channel (transparency)
+            if img is not None and len(img.shape) == 3 and img.shape[2] == 4:
+                # Image has alpha channel - convert to white background
+                # Split into BGR and alpha
+                bgr = img[:, :, :3]
+                alpha = img[:, :, 3:4] / 255.0
+                
+                # Create white background
+                white_bg = np.ones_like(bgr) * 255
+                
+                # Blend: result = foreground * alpha + background * (1 - alpha)
+                img = (bgr * alpha + white_bg * (1 - alpha)).astype(np.uint8)
+            elif img is not None and len(img.shape) == 2:
+                # Grayscale image, convert to BGR
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
             
             # Check if image has alpha channel (transparency)
             if img is not None and len(img.shape) == 3 and img.shape[2] == 4:
