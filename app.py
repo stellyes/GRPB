@@ -7,6 +7,10 @@ import zipfile
 from pathlib import Path
 import os
 import json
+from pillow_heif import register_heif_opener
+
+# Register HEIF opener for PIL
+register_heif_opener()
 
 # === Password Configuration ===
 # Get password from Streamlit secrets
@@ -368,15 +372,15 @@ def load_brand_logo_image(filepath):
 
 def load_image_file(uploaded_file):
     """
-    Load image from uploaded file, handling various formats including JFIF and AVIF.
+    Load image from uploaded file, handling various formats including JFIF, AVIF, and HEIC.
     Converts transparent backgrounds to white.
     Returns image as numpy array in BGR format for OpenCV processing.
     """
     try:
-        # For AVIF and other PIL-supported formats, use PIL first then convert to OpenCV
+        # For HEIC, AVIF, JFIF and other PIL-supported formats, use PIL first then convert to OpenCV
         file_ext = uploaded_file.name.lower().split('.')[-1]
         
-        if file_ext in ['avif', 'jfif']:
+        if file_ext in ['heic', 'heif', 'avif', 'jfif']:
             # Use PIL to open these formats
             pil_image = Image.open(uploaded_file)
             # Convert transparent backgrounds to white
@@ -515,7 +519,7 @@ def main():
         
         st.write("---")
         st.write("### Supported Formats")
-        st.write("JPG, JPEG, PNG, JFIF, AVIF")
+        st.write("JPG, JPEG, PNG, JFIF, AVIF, HEIC")
         
         st.write("---")
         st.write("### Watermark Status")
@@ -536,8 +540,8 @@ def main():
     # Photo upload
     st.write("## Upload Photos to Process")
     uploaded_files = st.file_uploader(
-        "Upload one or more photos (JPG, PNG, JFIF, AVIF)",
-        type=['png', 'jpg', 'jpeg', 'jfif', 'avif'],
+        "Upload one or more photos (JPG, PNG, JFIF, AVIF, HEIC)",
+        type=['png', 'jpg', 'jpeg', 'jfif', 'avif', 'heic', 'heif'],
         accept_multiple_files=True,
         key="photos"
     )
@@ -581,7 +585,7 @@ def main():
                     img = load_image_file(uploaded_file)
                     
                     # Apply pre-processing brightness if needed
-                    if pre_brightness_pct > 0:
+                    if pre_brightness_pct != 0:
                         img_rgb_pre = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         img_brightened = apply_image_adjustments(img_rgb_pre, pre_brightness_factor, 1.0, 1.0)
                         img = cv2.cvtColor(img_brightened, cv2.COLOR_RGB2BGR)
