@@ -525,6 +525,10 @@ def main():
     # Initialize session state for authentication
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
+    
+    # Initialize session state for tips modal
+    if 'show_tips' not in st.session_state:
+        st.session_state.show_tips = False
 
     # Login page
     if not st.session_state.authenticated:
@@ -538,6 +542,7 @@ def main():
             if st.button("Login", type="primary"):
                 if password == CORRECT_PASSWORD:
                     st.session_state.authenticated = True
+                    st.session_state.show_tips = True  # Show tips on first login
                     st.rerun()
                 else:
                     st.error("❌ Incorrect password. Please try again.")
@@ -548,11 +553,43 @@ def main():
     # Main application (after authentication)
     st.title("📸 Grassroots Photobooth Image Processor")
     
+    # Tips modal - shows after login
+    if st.session_state.show_tips:
+        with st.container():
+            st.info("### 💡 Tips for Best Results")
+            st.markdown("""
+            **For optimal background removal:**
+            
+            1. **📏 Manually crop your images** to include as little background as possible before uploading. 
+               This significantly improves the effectiveness of the background removal algorithm.
+            
+            2. **🔆 Adjust Pre-Processing Settings** if you encounter issues with background removal:
+               - Use the **Pre-Processing Brightness Boost** slider to lighten dark photos or darken overly bright ones
+               - Adjust the **Pre-Processing Contrast** slider to enhance the distinction between product and background
+               - These settings are available after you upload images, right before processing
+            
+            3. **✨ Best practices:**
+               - Use well-lit photos with even lighting
+               - Avoid shadows on the background when possible
+               - Keep the product clearly separated from the background
+            """)
+            
+            col1, col2, col3 = st.columns([2, 1, 2])
+            with col2:
+                if st.button("Got it! ✓", type="primary", use_container_width=True):
+                    st.session_state.show_tips = False
+                    st.rerun()
+    
     # Logout button in sidebar
     with st.sidebar:
         st.write("### Settings")
         if st.button("🚪 Logout"):
             st.session_state.authenticated = False
+            st.rerun()
+        
+        # Add button to show tips again
+        if st.button("💡 Show Tips"):
+            st.session_state.show_tips = True
             st.rerun()
         
         st.write("---")
