@@ -233,6 +233,110 @@ def remove_background(img):
     # Convert to array for return (will apply adjustments later with sliders)
     return canvas
 
+
+def has_transparency(pil_image):
+    """
+    Check if a PIL image has meaningful transparency (alpha channel with non-255 values).
+    Returns True if image has transparency, False otherwise.
+    """
+    if pil_image.mode not in ('RGBA', 'LA', 'P'):
+        return False
+    
+    # Convert P mode to RGBA to check alpha
+    if pil_image.mode == 'P':
+        if 'transparency' in pil_image.info:
+            return True
+        pil_image = pil_image.convert('RGBA')
+    
+    # Check if alpha channel has any non-255 values
+    if pil_image.mode in ('RGBA', 'LA'):
+        alpha = np.array(pil_image.split()[-1])
+        # If any pixel has alpha < 250, consider it transparent
+        return np.any(alpha < 250)
+    
+    return False
+
+
+def process_transparent_image(img_rgb, margin_ratio=0.02):
+    """
+    Process an image that already has transparency.
+    Creates square bounding box around non-transparent content and applies margins.
+    Returns processed image as numpy array.
+    """
+    # Convert to RGBA if not already
+    if len(img_rgb.shape) == 2:
+        img_rgba = cv2.cvtColor(img_rgb, cv2.COLOR_GRAY2RGBA)
+    elif img_rgb.shape[2] == 3:
+        img_rgba = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2RGBA)
+    else:
+        img_rgba = img_rgb.copy()
+    
+    # Extract alpha channel
+    alpha = img_rgba[:, :, 3]
+    
+    # Find bounding box of non-transparent pixels
+    non_transparent = alpha > 10  # Threshold for near-transparent
+    coords = np.argwhere(non_transparent)
+    
+    if len(coords) == 0:
+        raise ValueError("Image appears to be completely transparent")
+    
+    y_min, x_min = coords.min(axis=0)
+    y_max, x_max = coords.max(axis=0)
+    
+    # Add padding
+    padding = 15
+    y_min = max(0, y_min - padding)
+    x_min = max(0, x_min - padding)
+    y_max = min(img_rgba.shape[0], y_max + padding)
+    x_max = min(img_rgba.shape[1], x_max + padding)
+    
+    w = x_max - x_min
+    h = y_max - y_min
+    
+    # Calculate square crop with margins
+    object_ratio = 1 - 2 * margin_ratio
+    max_dim = max(w, h)
+    square_size = int(max_dim / object_ratio)
+    
+    # Calculate center
+    center_x = x_min + w // 2
+    center_y = y_min + h // 2
+    
+    crop_x1 = center_x - square_size // 2
+    crop_y1 = center_y - square_size // 2
+    crop_x2 = crop_x1 + square_size
+    crop_y2 = crop_y1 + square_size
+    
+    # Create white canvas
+    canvas = np.ones((square_size, square_size, 3), dtype=np.uint8) * 255
+    
+    # Adjust crop boundaries
+    paste_x = max(0, -crop_x1)
+    paste_y = max(0, -crop_y1)
+    src_x1 = max(0, crop_x1)
+    src_y1 = max(0, crop_y1)
+    src_x2 = min(crop_x2, img_rgba.shape[1])
+    src_y2 = min(crop_y2, img_rgba.shape[0])
+    
+    src_w = src_x2 - src_x1
+    src_h = src_y2 - src_y1
+    
+    # Extract regions
+    source_region = img_rgba[src_y1:src_y2, src_x1:src_x2]
+    rgb_region = source_region[:, :, :3]
+    alpha_region = source_region[:, :, 3:4] / 255.0
+    
+    # Blend with white background
+    white_bg = np.ones_like(rgb_region) * 255
+    final_region = (rgb_region * alpha_region + white_bg * (1 - alpha_region)).astype(np.uint8)
+    
+    # Paste onto canvas
+    canvas[paste_y:paste_y + src_h, paste_x:paste_x + src_w] = final_region
+    
+    return canvas
+    
+
 def apply_image_adjustments(img_array, brightness_factor, saturation_factor, contrast_factor):
     """
     Apply brightness, saturation, and contrast adjustments to an image array.
@@ -377,15 +481,18 @@ def load_image_file(uploaded_file):
     Automatically corrects image orientation based on EXIF data.
     HEIC images are automatically resized to max 3000px to improve processing speed.
     JPG/JPEG images are automatically resized to max 900px to improve processing speed.
-    Returns image as numpy array in BGR format for OpenCV processing.
+    Returns tuple: (image as numpy array in BGR format, has_transparency flag)
     """
     try:
         # For HEIC, AVIF, JFIF and other PIL-supported formats, use PIL first then convert to OpenCV
         file_ext = uploaded_file.name.lower().split('.')[-1]
         
-        if file_ext in ['heic', 'heif', 'avif', 'jfif', 'jpg', 'jpeg']:
+        if file_ext in ['heic', 'heif', 'avif', 'jfif', 'jpg', 'jpeg', 'png']:
             # Use PIL to open these formats
             pil_image = Image.open(uploaded_file)
+            
+            # Check for transparency BEFORE any conversions
+            has_trans = has_transparency(pil_image)
             
             # Correct orientation based on EXIF data
             try:
@@ -396,12 +503,10 @@ def load_image_file(uploaded_file):
             
             # HEIC Pre-processing: Resize large images for faster processing
             if file_ext in ['heic', 'heif']:
-                max_dimension = 900  # Maximum width or height
+                max_dimension = 900
                 width, height = pil_image.size
                 
-                # Only resize if image is larger than max_dimension
                 if width > max_dimension or height > max_dimension:
-                    # Calculate new size maintaining aspect ratio
                     if width > height:
                         new_width = max_dimension
                         new_height = int((max_dimension / width) * height)
@@ -409,17 +514,14 @@ def load_image_file(uploaded_file):
                         new_height = max_dimension
                         new_width = int((max_dimension / height) * width)
                     
-                    # Resize with high-quality LANCZOS resampling
                     pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
             
             # JPG/JPEG Pre-processing: Resize for faster processing
             if file_ext in ['jpg', 'jpeg']:
-                max_dimension = 900  # Maximum width or height
+                max_dimension = 900
                 width, height = pil_image.size
                 
-                # Only resize if image is larger than max_dimension
                 if width > max_dimension or height > max_dimension:
-                    # Calculate new size maintaining aspect ratio
                     if width > height:
                         new_width = max_dimension
                         new_height = int((max_dimension / width) * height)
@@ -427,7 +529,6 @@ def load_image_file(uploaded_file):
                         new_height = max_dimension
                         new_width = int((max_dimension / height) * width)
                     
-                    # Resize with high-quality LANCZOS resampling
                     pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
             
             # Convert transparent backgrounds to white
@@ -449,6 +550,9 @@ def load_image_file(uploaded_file):
             # Standard OpenCV decoding for common formats
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+            
+            # Check for transparency before orientation correction
+            has_trans = (img is not None and len(img.shape) == 3 and img.shape[2] == 4)
             
             # Correct orientation for standard formats
             try:
@@ -476,30 +580,11 @@ def load_image_file(uploaded_file):
             # Check if image has alpha channel (transparency)
             if img is not None and len(img.shape) == 3 and img.shape[2] == 4:
                 # Image has alpha channel - convert to white background
-                # Split into BGR and alpha
                 bgr = img[:, :, :3]
                 alpha = img[:, :, 3:4] / 255.0
                 
-                # Create white background
                 white_bg = np.ones_like(bgr) * 255
                 
-                # Blend: result = foreground * alpha + background * (1 - alpha)
-                img = (bgr * alpha + white_bg * (1 - alpha)).astype(np.uint8)
-            elif img is not None and len(img.shape) == 2:
-                # Grayscale image, convert to BGR
-                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            
-            # Check if image has alpha channel (transparency)
-            if img is not None and len(img.shape) == 3 and img.shape[2] == 4:
-                # Image has alpha channel - convert to white background
-                # Split into BGR and alpha
-                bgr = img[:, :, :3]
-                alpha = img[:, :, 3:4] / 255.0
-                
-                # Create white background
-                white_bg = np.ones_like(bgr) * 255
-                
-                # Blend: result = foreground * alpha + background * (1 - alpha)
                 img = (bgr * alpha + white_bg * (1 - alpha)).astype(np.uint8)
             elif img is not None and len(img.shape) == 2:
                 # Grayscale image, convert to BGR
@@ -508,11 +593,11 @@ def load_image_file(uploaded_file):
         if img is None:
             raise ValueError(f"Failed to load image: {uploaded_file.name}")
             
-        return img
+        return img, has_trans
         
     except Exception as e:
         raise ValueError(f"Error loading {uploaded_file.name}: {str(e)}")
-
+        
 
 # === Streamlit App ===
 def main():
@@ -722,7 +807,7 @@ def main():
                     status_text.text(f"Processing {uploaded_file.name}...")
                     
                     # Read image using the new loader function
-                    img = load_image_file(uploaded_file)
+                    img, has_transparency = load_image_file(uploaded_file)
                     
                     # Apply pre-processing brightness and contrast if needed
                     if pre_brightness_pct != 0 or pre_contrast_pct != 0:
@@ -733,18 +818,37 @@ def main():
                     if process_watermark_only:
                         # Watermark only mode - convert to RGB array
                         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        # Apply adjustments
-                        img_adjusted = apply_image_adjustments(img_rgb, brightness_factor, saturation_factor, contrast_factor)
-                        final_image = apply_watermark(img_adjusted, watermark_image)
+                        
+                        # If image has transparency, process it to fit margins
+                        if has_transparency:
+                            img_rgb = process_transparent_image(img_rgb)
+                        
+                            # Apply adjustments
+                            img_adjusted = apply_image_adjustments(img_rgb, brightness_factor, saturation_factor, contrast_factor)
+                            final_image = apply_watermark(img_adjusted, watermark_image)
                     elif process_background_only:
                         # Background removal only - no watermark
-                        processed = remove_background(img)
+                        if has_transparency:
+                            # Image already has transparency, just process to fit margins
+                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            processed = process_transparent_image(img_rgb)
+                        else:
+                            # Remove background normally
+                            processed = remove_background(img)
+                        
                         # Apply adjustments
                         final_image_array = apply_image_adjustments(processed, brightness_factor, saturation_factor, contrast_factor)
                         final_image = Image.fromarray(final_image_array)
                     else:
                         # Full processing mode - remove background + adjustments + watermark
-                        processed = remove_background(img)
+                        if has_transparency:
+                            # Image already has transparency, just process to fit margins
+                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            processed = process_transparent_image(img_rgb)
+                        else:
+                            # Remove background normally
+                            processed = remove_background(img)
+                        
                         # Apply adjustments
                         processed_adjusted = apply_image_adjustments(processed, brightness_factor, saturation_factor, contrast_factor)
                         final_image = apply_watermark(processed_adjusted, watermark_image)
