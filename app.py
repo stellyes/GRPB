@@ -122,7 +122,7 @@ def remove_background(img):
         cv2.drawContours(final_mask, [contour], -1, 255, -1)
     
     # === Dilate mask MORE to preserve product edges ===
-    final_mask = cv2.dilate(final_mask, kernel_small, iterations=3)
+    final_mask = cv2.dilate(final_mask, kernel_small, iterations=6)
     
     # === Refine: Remove background aggressively ===
     # Target light neutral pixels more aggressively
