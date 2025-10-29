@@ -66,7 +66,7 @@ def remove_background(img):
     
     # === Strategy 4: Enhanced edge detection using preprocessed image ===
     edges = cv2.Canny(gray_preprocessed, 30, 100)
-    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=2)
+    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=3)
     
     # === Strategy 5: Texture detection ===
     blur = cv2.GaussianBlur(l_channel, (21, 21), 0)
@@ -85,13 +85,13 @@ def remove_background(img):
     kernel_large = np.ones((9, 9), np.uint8)
     
     # Close small gaps in product
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=2)
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=3)
     # Remove very small noise only
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
     # Fill larger holes within product
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
     # Slightly dilate to ensure we capture all product edges
-    combined_mask = cv2.dilate(combined_mask, kernel_small, iterations=1)
+    combined_mask = cv2.dilate(combined_mask, kernel_small, iterations=2)
     
     # === Find contours ===
     contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -122,7 +122,7 @@ def remove_background(img):
         cv2.drawContours(final_mask, [contour], -1, 255, -1)
     
     # === Dilate mask MORE to preserve product edges ===
-    final_mask = cv2.dilate(final_mask, kernel_small, iterations=6)
+    final_mask = cv2.dilate(final_mask, kernel_small, iterations=4)
     
     # === Refine: Remove background aggressively ===
     # Target light neutral pixels more aggressively
