@@ -66,7 +66,7 @@ def remove_background(img):
     
     # === Strategy 4: Enhanced edge detection using preprocessed image ===
     edges = cv2.Canny(gray_preprocessed, 30, 100)
-    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=3)
+    edges_dilated = cv2.dilate(edges, np.ones((5, 5), np.uint8), iterations=2)
     
     # === Strategy 5: Texture detection ===
     blur = cv2.GaussianBlur(l_channel, (21, 21), 0)
@@ -85,13 +85,13 @@ def remove_background(img):
     kernel_large = np.ones((9, 9), np.uint8)
     
     # Close small gaps in product
-    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=3)
+    combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_medium, iterations=2)
     # Remove very small noise only
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
     # Fill larger holes within product
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
     # Slightly dilate to ensure we capture all product edges
-    combined_mask = cv2.dilate(combined_mask, kernel_small, iterations=2)
+    combined_mask = cv2.dilate(combined_mask, kernel_small, iterations=1)
     
     # === Find contours ===
     contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -122,7 +122,7 @@ def remove_background(img):
         cv2.drawContours(final_mask, [contour], -1, 255, -1)
     
     # === Dilate mask MORE to preserve product edges ===
-    final_mask = cv2.dilate(final_mask, kernel_small, iterations=4)
+    final_mask = cv2.dilate(final_mask, kernel_small, iterations=2)
     
     # === Refine: Remove background aggressively ===
     # Target light neutral pixels more aggressively
@@ -260,7 +260,7 @@ def has_transparency(pil_image):
 def process_transparent_image(img_rgb, margin_ratio=0.02):
     """
     Process an image that already has transparency.
-    Creates square bounding box around non-transparent content and applies margins.
+    Creates the most efficient square bounding box around non-transparent content with minimal margins.
     Returns processed image as numpy array.
     """
     # Convert to RGBA if not already
@@ -274,8 +274,8 @@ def process_transparent_image(img_rgb, margin_ratio=0.02):
     # Extract alpha channel
     alpha = img_rgba[:, :, 3]
     
-    # Find bounding box of non-transparent pixels
-    non_transparent = alpha > 10  # Threshold for near-transparent
+    # Find bounding box of non-transparent pixels (very aggressive threshold)
+    non_transparent = alpha > 5  # Very low threshold to capture all visible content
     coords = np.argwhere(non_transparent)
     
     if len(coords) == 0:
@@ -284,17 +284,17 @@ def process_transparent_image(img_rgb, margin_ratio=0.02):
     y_min, x_min = coords.min(axis=0)
     y_max, x_max = coords.max(axis=0)
     
-    # Add padding
-    padding = 15
-    y_min = max(0, y_min - padding)
-    x_min = max(0, x_min - padding)
-    y_max = min(img_rgba.shape[0], y_max + padding)
-    x_max = min(img_rgba.shape[1], x_max + padding)
+    # No padding - we want the tightest possible crop
+    # Just add 1 pixel to avoid edge artifacts
+    y_min = max(0, y_min - 1)
+    x_min = max(0, x_min - 1)
+    y_max = min(img_rgba.shape[0], y_max + 1)
+    x_max = min(img_rgba.shape[1], x_max + 1)
     
     w = x_max - x_min
     h = y_max - y_min
     
-    # Calculate square crop with margins
+    # Calculate square crop with minimal margins
     object_ratio = 1 - 2 * margin_ratio
     max_dim = max(w, h)
     square_size = int(max_dim / object_ratio)
@@ -479,8 +479,7 @@ def load_image_file(uploaded_file):
     Load image from uploaded file, handling various formats including JFIF, AVIF, and HEIC.
     Converts transparent backgrounds to white.
     Automatically corrects image orientation based on EXIF data.
-    HEIC images are automatically resized to max 3000px to improve processing speed.
-    JPG/JPEG images are automatically resized to max 900px to improve processing speed.
+    All images are automatically resized to max 900x900px to improve processing speed.
     Returns tuple: (image as numpy array in BGR format, has_transparency flag)
     """
     try:
@@ -501,35 +500,19 @@ def load_image_file(uploaded_file):
             except Exception:
                 pass  # If EXIF orientation fails, continue with original
             
-            # HEIC Pre-processing: Resize large images for faster processing
-            if file_ext in ['heic', 'heif']:
-                max_dimension = 900
-                width, height = pil_image.size
-                
-                if width > max_dimension or height > max_dimension:
-                    if width > height:
-                        new_width = max_dimension
-                        new_height = int((max_dimension / width) * height)
-                    else:
-                        new_height = max_dimension
-                        new_width = int((max_dimension / height) * width)
-                    
-                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+            # Resize ALL images to max 900x900px (maintaining aspect ratio)
+            max_dimension = 900
+            width, height = pil_image.size
             
-            # JPG/JPEG Pre-processing: Resize for faster processing
-            if file_ext in ['jpg', 'jpeg']:
-                max_dimension = 900
-                width, height = pil_image.size
+            if width > max_dimension or height > max_dimension:
+                if width > height:
+                    new_width = max_dimension
+                    new_height = int((max_dimension / width) * height)
+                else:
+                    new_height = max_dimension
+                    new_width = int((max_dimension / height) * width)
                 
-                if width > max_dimension or height > max_dimension:
-                    if width > height:
-                        new_width = max_dimension
-                        new_height = int((max_dimension / width) * height)
-                    else:
-                        new_height = max_dimension
-                        new_width = int((max_dimension / height) * width)
-                    
-                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+                pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
             
             # Convert transparent backgrounds to white
             if pil_image.mode in ('RGBA', 'LA', 'P'):
@@ -602,7 +585,7 @@ def load_image_file(uploaded_file):
 # === Streamlit App ===
 def main():
     st.set_page_config(
-        page_title="Grassroots Photobooth Processor",
+        page_title="Grass Roots Photobooth",
         page_icon="📸",
         layout="wide"
     )
@@ -617,7 +600,7 @@ def main():
 
     # Login page
     if not st.session_state.authenticated:
-        st.title("🔒 Grassroots Photobooth Image Processor")
+        st.title("🔒 Grass Roots Image Processor")
         st.write("Please enter the password to access the image processor.")
         
         password = st.text_input("Password", type="password", key="password_input")
@@ -636,7 +619,7 @@ def main():
         return
 
     # Main application (after authentication)
-    st.title("📸 Grassroots Photobooth Image Processor")
+    st.title("📸 Grass Roots Image Processor")
     
     # Tips modal - shows after login
     if st.session_state.show_tips:
@@ -729,8 +712,7 @@ def main():
         st.write("---")
         st.write("### Supported Formats")
         st.write("JPG, JPEG, PNG, JFIF, AVIF, HEIC")
-        st.caption("📱 HEIC images are automatically resized to 3000px max for faster processing")
-        st.caption("📷 JPG/JPEG images are automatically resized to 900px max for faster processing")
+        st.caption("📐 All images are automatically resized to max 900x900px for optimal processing")
         
         st.write("---")
         st.write("### Watermark Status")
@@ -823,9 +805,9 @@ def main():
                         if has_transparency:
                             img_rgb = process_transparent_image(img_rgb)
                         
-                            # Apply adjustments
-                            img_adjusted = apply_image_adjustments(img_rgb, brightness_factor, saturation_factor, contrast_factor)
-                            final_image = apply_watermark(img_adjusted, watermark_image)
+                        # Apply adjustments
+                        img_adjusted = apply_image_adjustments(img_rgb, brightness_factor, saturation_factor, contrast_factor)
+                        final_image = apply_watermark(img_adjusted, watermark_image)
                     elif process_background_only:
                         # Background removal only - no watermark
                         if has_transparency:
