@@ -358,6 +358,30 @@ def apply_image_adjustments(img_array, brightness_factor, saturation_factor, con
     
     return np.array(pil_img).astype(np.uint8)
 
+
+def apply_exposure_adjustment(img_bgr, exposure_factor):
+    """
+    Apply exposure adjustment to an image.
+    Exposure factor should be in range 1.0 to 1.75 for 0% to +75% adjustment.
+    Uses gamma correction for natural-looking exposure changes.
+    """
+    if exposure_factor == 1.0:
+        return img_bgr
+    
+    # Convert to float for precision
+    img_float = img_bgr.astype(np.float32) / 255.0
+    
+    # Apply gamma correction for exposure
+    # Lower gamma = brighter image (simulates longer exposure)
+    gamma = 1.0 / exposure_factor
+    img_exposed = np.power(img_float, gamma)
+    
+    # Convert back to uint8
+    img_exposed = np.clip(img_exposed * 255.0, 0, 255).astype(np.uint8)
+    
+    return img_exposed
+
+
 def apply_watermark(base_image_array, watermark_image):
     """
     Applies a watermark to an image and returns the result.
@@ -585,7 +609,7 @@ def load_image_file(uploaded_file):
 # === Streamlit App ===
 def main():
     st.set_page_config(
-        page_title="Grass Roots Photobooth",
+        page_title="Grass Roots Photobooth Processor",
         page_icon="📸",
         layout="wide"
     )
@@ -600,7 +624,7 @@ def main():
 
     # Login page
     if not st.session_state.authenticated:
-        st.title("🔒 Grass Roots Image Processor")
+        st.title("🔒 Grass Roots Coast Image Processor")
         st.write("Please enter the password to access the image processor.")
         
         password = st.text_input("Password", type="password", key="password_input")
@@ -744,16 +768,16 @@ def main():
         
         # Pre-processing brightness adjustment
         st.write("### Pre-Processing Adjustment")
-        pre_brightness_pct = st.slider(
-            "Pre-Processing Brightness Boost",
-            min_value=-25,
-            max_value=50,
+        pre_exposure_pct = st.slider(
+            "Pre-Processing Exposure Boost",
+            min_value=0,
+            max_value=100,
             value=0,
             step=1,
             format="%d%%",
-            help="Adjust brightness BEFORE background removal (useful for dark or overly bright photos)"
+            help="Increase exposure BEFORE background removal (useful for underexposed photos)"
         )
-        pre_brightness_factor = 1.0 + (pre_brightness_pct / 100.0)
+        pre_exposure_factor = 1.0 + (pre_exposure_pct / 100.0)
         
         # Pre-processing contrast adjustment
         pre_contrast_pct = st.slider(
@@ -791,11 +815,17 @@ def main():
                     # Read image using the new loader function
                     img, has_transparency = load_image_file(uploaded_file)
                     
-                    # Apply pre-processing brightness and contrast if needed
-                    if pre_brightness_pct != 0 or pre_contrast_pct != 0:
-                        img_rgb_pre = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        img_adjusted_pre = apply_image_adjustments(img_rgb_pre, pre_brightness_factor, 1.0, pre_contrast_factor)
-                        img = cv2.cvtColor(img_adjusted_pre, cv2.COLOR_RGB2BGR)
+                    # Apply pre-processing exposure and contrast if needed
+                    if pre_exposure_pct != 0 or pre_contrast_pct != 0:
+                        # Apply exposure adjustment first
+                        if pre_exposure_pct != 0:
+                            img = apply_exposure_adjustment(img, pre_exposure_factor)
+                        
+                        # Apply contrast adjustment
+                        if pre_contrast_pct != 0:
+                            img_rgb_pre = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            img_adjusted_pre = apply_image_adjustments(img_rgb_pre, 1.0, 1.0, pre_contrast_factor)
+                            img = cv2.cvtColor(img_adjusted_pre, cv2.COLOR_RGB2BGR)
                     
                     if process_watermark_only:
                         # Watermark only mode - convert to RGB array
